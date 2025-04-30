@@ -2,7 +2,8 @@
 
 基于Cloudflare Workers的轻量级订阅管理系统，帮助您轻松跟踪各类订阅服务的到期时间，并通过Telegram发送及时提醒。
 
-![image-20250430101010506](https://img1.wangwangit.com/wangwangit/image/refs/heads/master/img1/image-20250430101010506.png)
+![image](https://github.com/user-attachments/assets/22ff1592-7836-4f73-aa13-24e9d43d7064)
+
 
 ## ✨ 特性
 
@@ -24,27 +25,33 @@
 
 1.登陆cloudflare,创建worker,粘贴本项目中的js代码,点击部署
 
-![image-20250430100434263](https://img1.wangwangit.com/wangwangit/image/refs/heads/master/img1/image-20250430100434263.png)
+![image](https://github.com/user-attachments/assets/ff4ac794-01e1-4916-b226-1f4f604dcbd3)
+
 
 2.创建KV键值 **SUBSCRIPTIONS_KV**
 
-![image-20250430100633260](https://img1.wangwangit.com/wangwangit/image/refs/heads/master/img1/image-20250430100633260.png)
+![image](https://github.com/user-attachments/assets/c9ebaf3e-6015-4400-bb0a-1a55fd5e14d2)
+
 
 3.给worker绑定上键值对,以及设置定时执行时间!
 
-![image-20250430100751707](https://img1.wangwangit.com/wangwangit/image/refs/heads/master/img1/image-20250430100751707.png)
+![image](https://github.com/user-attachments/assets/25b663b3-8e8e-4386-a499-9b6bf12ead76)
+
 
 4.打开worker提供的域名地址,输入默认账号密码: admin  password
 
-![image-20250430100836404](https://img1.wangwangit.com/wangwangit/image/refs/heads/master/img1/image-20250430100836404.png)
+![image](https://github.com/user-attachments/assets/5dac1ce0-43a3-4642-925c-d9cf21076454)
+
 
 5.前往系统配置,修改账号密码,以及配置tg通知的信息
 
-![image-20250430100913940](https://img1.wangwangit.com/wangwangit/image/refs/heads/master/img1/image-20250430100913940.png)
+![image](https://github.com/user-attachments/assets/f6db2089-28a1-439d-9de0-412ee4b2807f)
+
 
 6.配置完成可以点击测试通知,查看是否能够正常通知,然后就可以正常添加订阅使用了!
 
-![image-20250430101010506](https://img1.wangwangit.com/wangwangit/image/refs/heads/master/img1/image-20250430101010506.png)
+![image](https://github.com/user-attachments/assets/af530379-332c-4482-9e6e-229a9e24775e)
+
 
 
 
