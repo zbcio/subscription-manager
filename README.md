@@ -14,6 +14,10 @@
 - ☁️ **免服务器**: 基于Cloudflare Workers，无需自建服务器
 - 🔒 **安全可靠**: 数据存储在Cloudflare KV中，安全且高效
 
+## 版本更新
+V0: TG通知
+v1: TG通知+NotifyX通知
+
 ## 🚀 部署指南
 
 ### 前提条件
