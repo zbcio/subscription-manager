@@ -1306,7 +1306,7 @@ async function getConfig(env) {
     
     return {
       ADMIN_USERNAME: config.ADMIN_USERNAME || 'admin',
-      ADMIN_PASSWORD: config.ADMIN_PASSWORD || 'admin123',
+      ADMIN_PASSWORD: config.ADMIN_PASSWORD || 'password',
       JWT_SECRET: config.JWT_SECRET || 'your-secret-key',
       TG_BOT_TOKEN: config.TG_BOT_TOKEN || '',
       TG_CHAT_ID: config.TG_CHAT_ID || '',
@@ -1316,7 +1316,7 @@ async function getConfig(env) {
   } catch (error) {
     return {
       ADMIN_USERNAME: 'admin',
-      ADMIN_PASSWORD: 'admin123',
+      ADMIN_PASSWORD: 'password',
       JWT_SECRET: 'your-secret-key',
       TG_BOT_TOKEN: '',
       TG_CHAT_ID: '',
