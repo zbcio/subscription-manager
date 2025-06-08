@@ -1,6 +1,6 @@
 # SubsTracker - 订阅管理与提醒系统
 
-基于Cloudflare Workers的轻量级订阅管理系统，帮助您轻松跟踪各类订阅服务的到期时间，并通过Telegram发送及时提醒。
+基于Cloudflare Workers的轻量级订阅管理系统，帮助您轻松跟踪各类订阅服务的到期时间，并通过Telegram,微信等发送及时提醒。
 
 ![image](https://github.com/user-attachments/assets/22ff1592-7836-4f73-aa13-24e9d43d7064)
 
@@ -41,6 +41,7 @@ V2:
 
 - Cloudflare账户
 - Telegram Bot (用于发送通知)
+- 可以直接将代码丢给AI,帮助查漏补缺
 
 ### 部署步骤
 
@@ -59,7 +60,7 @@ V2:
 ![image](https://github.com/user-attachments/assets/25b663b3-8e8e-4386-a499-9b6bf12ead76)
 
 
-4.打开worker提供的域名地址,输入默认账号密码: admin  password
+4.打开worker提供的域名地址,输入默认账号密码: admin  password (或者admin admin123),可以在代码中查看默认账号密码!
 
 ![image](https://github.com/user-attachments/assets/5dac1ce0-43a3-4642-925c-d9cf21076454)
 
