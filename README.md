@@ -1,41 +1,83 @@
 # SubsTracker - 订阅管理与提醒系统
 
-基于Cloudflare Workers的轻量级订阅管理系统，帮助您轻松跟踪各类订阅服务的到期时间，并通过Telegram,微信等发送及时提醒。
+基于Cloudflare Workers的轻量级订阅管理系统，帮助您轻松跟踪各类订阅服务的到期时间，并通过Telegram,企业微信等发送及时提醒。
 
 ![image](https://github.com/user-attachments/assets/22ff1592-7836-4f73-aa13-24e9d43d7064)
 
+## ✨ 功能特色
 
-## ✨ 特性
+### 🎯 核心功能
+- **订阅管理**：添加、编辑、删除各类订阅服务
+- **智能提醒**：自定义提前提醒天数，自动续订计算
+- **农历显示**：支持农历日期显示，可控制开关
+- **状态管理**：订阅启用/停用，过期状态自动识别
 
-- 🔔 **自动提醒**: 在订阅到期前自动发送Telegram通知
-- 📊 **订阅管理**: 直观的Web界面管理所有订阅
-- 🔄 **周期计算**: 智能计算循环订阅的下一个周期
-- 📱 **响应式设计**: 完美适配移动端和桌面设备
-- ☁️ **免服务器**: 基于Cloudflare Workers，无需自建服务器
-- 🔒 **安全可靠**: 数据存储在Cloudflare KV中，安全且高效
+### 📱 多渠道通知
+- **Telegram**：支持 Telegram Bot 通知
+- **NotifyX**：集成 NotifyX 推送服务
+- **企业微信应用通知**：支持企业微信应用推送
+- **自定义 Webhook**：支持自定义请求格式和模板
 
-## 版本更新
-V0: TG通知 
+### 🌙 农历功能
+- **农历转换**：支持 1900-2100 年农历转换
+- **智能显示**：列表和编辑页面可控制农历显示
+- **通知集成**：通知消息中可包含农历信息
 
-v1: TG通知+NotifyX通知 
+### 🎨 用户体验
+- **响应式设计**：完美适配桌面端和移动端
+- **备注优化**：长备注自动截断，悬停显示完整内容
+- **实时预览**：日期选择时实时显示对应农历
+- **用户偏好**：记住用户的显示偏好设置
 
-V2: 
+## 🚀 一键部署
 
-✅ 订阅列表按到期日期升序排序 
+### 点击按钮，一键部署到 CloudFlare Workers,
 
-✅ 修复了提醒天数逻辑（reminderDays: 0 只在到期日提醒） 
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wangwangit/SubsTracker)
 
-✅ 添加了自动续费切换功能（autoRenew 字段） 
 
-✅ 增强了测试通知功能（在配置页面独立测试按钮） 
+> 适用于新部署的,以前部署过的直接替换js中的内容即可!
 
-✅ 实现了Toast通知系统 
+## 📋 三步开始使用
 
-✅ 表单验证和错误处理 
+### 1️⃣ 一键部署
+Fork仓库,然后点击自己仓库里的部署按钮，等待部署完成,**注意,KV名称修改为 `SUBSCRIPTIONS_KV`**
+![image.png](https://img.wangwangit.com/file/1751942578108_image.png)
 
-✅ 安全配置（不返回敏感信息） 
+### 2️⃣ 首次登录
+- 访问部署后的域名
+- 默认用户名：`admin`
+- 默认密码：`password`
 
-## 🚀 部署指南
+### 3️⃣ 开始使用
+1. **修改默认密码**（进入系统配置）
+2. **配置通知渠道**（选择一个或多个）
+3. **添加订阅**，设置提醒
+4. **享受智能提醒**！
+
+## 🔧 通知渠道配置
+
+### Telegram
+- **Bot Token**: 从 [@BotFather](https://t.me/BotFather) 获取
+- **Chat ID**: 从 [@userinfobot](https://t.me/userinfobot) 获取
+
+### NotifyX
+- **API Key**: 从 [NotifyX官网](https://www.notifyx.cn/) 获取
+
+### 企业微信应用通知
+- **推送 URL**: 从 [企业微信应用通知平台](https://push.996007.icu) 获取
+- 支持自定义请求头和消息模板
+
+### 企业微信机器人
+- **推送 URL**: 参考[官方文档](https://developer.work.weixin.qq.com/document/path/91770)获取
+
+
+> 💡 **提示**: 系统默认每天早上8点自动检查即将到期的订阅
+
+
+
+
+## 🚀 手动部署指南
 
 ### 前提条件
 
