@@ -1142,6 +1142,10 @@ const configPage = `
                 <input type="checkbox" name="enabledNotifiers" value="webhook" class="form-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
                 <span class="ml-2 text-sm text-gray-700">企业微信应用通知</span>
               </label>
+              <label class="inline-flex items-center">
+                <input type="checkbox" name="enabledNotifiers" value="wechatbot" class="form-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                <span class="ml-2 text-sm text-gray-700">企业微信机器人</span>
+              </label>
             </div>
             <div class="mt-2 flex space-x-4">
               <a href="https://www.notifyx.cn/" target="_blank" class="text-indigo-600 hover:text-indigo-800 text-sm">
@@ -1149,6 +1153,9 @@ const configPage = `
               </a>
               <a href="https://push.wangwangit.com" target="_blank" class="text-indigo-600 hover:text-indigo-800 text-sm">
                 <i class="fas fa-external-link-alt ml-1"></i> 企业微信应用通知官网
+              </a>
+              <a href="https://developer.work.weixin.qq.com/document/path/91770" target="_blank" class="text-indigo-600 hover:text-indigo-800 text-sm">
+                <i class="fas fa-external-link-alt ml-1"></i> 企业微信机器人文档
               </a>
             </div>
           </div>
@@ -1219,6 +1226,42 @@ const configPage = `
               </button>
             </div>
           </div>
+
+          <div id="wechatbotConfig" class="config-section">
+            <h4 class="text-md font-medium text-gray-900 mb-3">企业微信机器人 配置</h4>
+            <div class="grid grid-cols-1 gap-4 mb-4">
+              <div>
+                <label for="wechatbotWebhook" class="block text-sm font-medium text-gray-700">机器人 Webhook URL</label>
+                <input type="url" id="wechatbotWebhook" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your-key" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <p class="mt-1 text-sm text-gray-500">从企业微信群聊中添加机器人获取的 Webhook URL</p>
+              </div>
+              <div>
+                <label for="wechatbotMsgType" class="block text-sm font-medium text-gray-700">消息类型</label>
+                <select id="wechatbotMsgType" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                  <option value="text">文本消息</option>
+                  <option value="markdown">Markdown消息</option>
+                </select>
+                <p class="mt-1 text-sm text-gray-500">选择发送的消息格式类型</p>
+              </div>
+              <div>
+                <label for="wechatbotAtMobiles" class="block text-sm font-medium text-gray-700">@手机号 (可选)</label>
+                <input type="text" id="wechatbotAtMobiles" placeholder="13800138000,13900139000" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <p class="mt-1 text-sm text-gray-500">需要@的手机号，多个用逗号分隔，留空则不@任何人</p>
+              </div>
+              <div>
+                <label for="wechatbotAtAll" class="block text-sm font-medium text-gray-700 mb-2">@所有人</label>
+                <label class="inline-flex items-center">
+                  <input type="checkbox" id="wechatbotAtAll" class="form-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                  <span class="ml-2 text-sm text-gray-700">发送消息时@所有人</span>
+                </label>
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button type="button" id="testWechatBotBtn" class="btn-secondary text-white px-4 py-2 rounded-md text-sm font-medium">
+                <i class="fas fa-paper-plane mr-2"></i>测试 企业微信机器人
+              </button>
+            </div>
+          </div>
         </div>
         
         <div class="flex justify-end">
@@ -1267,6 +1310,10 @@ const configPage = `
         document.getElementById('webhookMethod').value = config.WEBHOOK_METHOD || 'POST';
         document.getElementById('webhookHeaders').value = config.WEBHOOK_HEADERS || '';
         document.getElementById('webhookTemplate').value = config.WEBHOOK_TEMPLATE || '';
+        document.getElementById('wechatbotWebhook').value = config.WECHATBOT_WEBHOOK || '';
+        document.getElementById('wechatbotMsgType').value = config.WECHATBOT_MSG_TYPE || 'text';
+        document.getElementById('wechatbotAtMobiles').value = config.WECHATBOT_AT_MOBILES || '';
+        document.getElementById('wechatbotAtAll').checked = config.WECHATBOT_AT_ALL === 'true';
 
         // 处理多选通知渠道
         const enabledNotifiers = config.ENABLED_NOTIFIERS || ['notifyx'];
@@ -1285,9 +1332,10 @@ const configPage = `
       const telegramConfig = document.getElementById('telegramConfig');
       const notifyxConfig = document.getElementById('notifyxConfig');
       const webhookConfig = document.getElementById('webhookConfig');
+      const wechatbotConfig = document.getElementById('wechatbotConfig');
 
       // 重置所有配置区域
-      [telegramConfig, notifyxConfig, webhookConfig].forEach(config => {
+      [telegramConfig, notifyxConfig, webhookConfig, wechatbotConfig].forEach(config => {
         config.classList.remove('active', 'inactive');
         config.classList.add('inactive');
       });
@@ -1303,6 +1351,9 @@ const configPage = `
         } else if (type === 'webhook') {
           webhookConfig.classList.remove('inactive');
           webhookConfig.classList.add('active');
+        } else if (type === 'wechatbot') {
+          wechatbotConfig.classList.remove('inactive');
+          wechatbotConfig.classList.add('active');
         }
       });
     }
@@ -1335,6 +1386,10 @@ const configPage = `
         WEBHOOK_METHOD: document.getElementById('webhookMethod').value,
         WEBHOOK_HEADERS: document.getElementById('webhookHeaders').value.trim(),
         WEBHOOK_TEMPLATE: document.getElementById('webhookTemplate').value.trim(),
+        WECHATBOT_WEBHOOK: document.getElementById('wechatbotWebhook').value.trim(),
+        WECHATBOT_MSG_TYPE: document.getElementById('wechatbotMsgType').value,
+        WECHATBOT_AT_MOBILES: document.getElementById('wechatbotAtMobiles').value.trim(),
+        WECHATBOT_AT_ALL: document.getElementById('wechatbotAtAll').checked.toString(),
         ENABLED_NOTIFIERS: enabledNotifiers
       };
 
@@ -1374,11 +1429,13 @@ const configPage = `
     
     async function testNotification(type) {
       const buttonId = type === 'telegram' ? 'testTelegramBtn' :
-                      type === 'notifyx' ? 'testNotifyXBtn' : 'testWebhookBtn';
+                      type === 'notifyx' ? 'testNotifyXBtn' :
+                      type === 'wechatbot' ? 'testWechatBotBtn' : 'testWebhookBtn';
       const button = document.getElementById(buttonId);
       const originalContent = button.innerHTML;
       const serviceName = type === 'telegram' ? 'Telegram' :
-                          type === 'notifyx' ? 'NotifyX' : '企业微信应用通知';
+                          type === 'notifyx' ? 'NotifyX' :
+                          type === 'wechatbot' ? '企业微信机器人' : '企业微信应用通知';
 
       button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>测试中...';
       button.disabled = true;
@@ -1411,6 +1468,18 @@ const configPage = `
 
         if (!config.WEBHOOK_URL) {
           showToast('请先填写 企业微信应用通知 URL', 'warning');
+          button.innerHTML = originalContent;
+          button.disabled = false;
+          return;
+        }
+      } else if (type === 'wechatbot') {
+        config.WECHATBOT_WEBHOOK = document.getElementById('wechatbotWebhook').value.trim();
+        config.WECHATBOT_MSG_TYPE = document.getElementById('wechatbotMsgType').value;
+        config.WECHATBOT_AT_MOBILES = document.getElementById('wechatbotAtMobiles').value.trim();
+        config.WECHATBOT_AT_ALL = document.getElementById('wechatbotAtAll').checked.toString();
+
+        if (!config.WECHATBOT_WEBHOOK) {
+          showToast('请先填写企业微信机器人 Webhook URL', 'warning');
           button.innerHTML = originalContent;
           button.disabled = false;
           return;
@@ -1450,6 +1519,10 @@ const configPage = `
 
     document.getElementById('testWebhookBtn').addEventListener('click', () => {
       testNotification('webhook');
+    });
+
+    document.getElementById('testWechatBotBtn').addEventListener('click', () => {
+      testNotification('wechatbot');
     });
 
     window.addEventListener('load', loadConfig);
@@ -1562,11 +1635,21 @@ const api = {
             WEBHOOK_METHOD: newConfig.WEBHOOK_METHOD || 'POST',
             WEBHOOK_HEADERS: newConfig.WEBHOOK_HEADERS || '',
             WEBHOOK_TEMPLATE: newConfig.WEBHOOK_TEMPLATE || '',
+            WECHATBOT_WEBHOOK: newConfig.WECHATBOT_WEBHOOK || '',
+            WECHATBOT_MSG_TYPE: newConfig.WECHATBOT_MSG_TYPE || 'text',
+            WECHATBOT_AT_MOBILES: newConfig.WECHATBOT_AT_MOBILES || '',
+            WECHATBOT_AT_ALL: newConfig.WECHATBOT_AT_ALL || 'false',
             ENABLED_NOTIFIERS: newConfig.ENABLED_NOTIFIERS || ['notifyx']
           };
 
           if (newConfig.ADMIN_PASSWORD) {
             updatedConfig.ADMIN_PASSWORD = newConfig.ADMIN_PASSWORD;
+          }
+
+          // 确保JWT_SECRET存在且安全
+          if (!updatedConfig.JWT_SECRET || updatedConfig.JWT_SECRET === 'your-secret-key') {
+            updatedConfig.JWT_SECRET = generateRandomSecret();
+            console.log('[安全] 生成新的JWT密钥');
           }
 
           await env.SUBSCRIPTIONS_KV.put('config', JSON.stringify(updatedConfig));
@@ -1627,6 +1710,20 @@ const api = {
 
           success = await sendWebhookNotification(title, content, testConfig);
           message = success ? '企业微信应用通知发送成功' : '企业微信应用通知发送失败，请检查配置';
+        } else if (body.type === 'wechatbot') {
+          const testConfig = {
+            ...config,
+            WECHATBOT_WEBHOOK: body.WECHATBOT_WEBHOOK,
+            WECHATBOT_MSG_TYPE: body.WECHATBOT_MSG_TYPE,
+            WECHATBOT_AT_MOBILES: body.WECHATBOT_AT_MOBILES,
+            WECHATBOT_AT_ALL: body.WECHATBOT_AT_ALL
+          };
+
+          const title = '测试通知';
+          const content = '这是一条测试通知，用于验证企业微信机器人功能是否正常工作。\n\n发送时间: ' + new Date().toLocaleString();
+
+          success = await sendWechatBotNotification(title, content, testConfig);
+          message = success ? '企业微信机器人通知发送成功' : '企业微信机器人通知发送失败，请检查配置';
         }
 
         return new Response(
@@ -1778,6 +1875,16 @@ const api = {
 };
 
 // 工具函数
+function generateRandomSecret() {
+  // 生成一个64字符的随机密钥
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  let result = '';
+  for (let i = 0; i < 64; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 async function getConfig(env) {
   try {
     const data = await env.SUBSCRIPTIONS_KV.get('config');
@@ -1786,7 +1893,7 @@ async function getConfig(env) {
     return {
       ADMIN_USERNAME: config.ADMIN_USERNAME || 'admin',
       ADMIN_PASSWORD: config.ADMIN_PASSWORD || 'password',
-      JWT_SECRET: config.JWT_SECRET || 'your-secret-key',
+      JWT_SECRET: config.JWT_SECRET || generateRandomSecret(),
       TG_BOT_TOKEN: config.TG_BOT_TOKEN || '',
       TG_CHAT_ID: config.TG_CHAT_ID || '',
       NOTIFYX_API_KEY: config.NOTIFYX_API_KEY || '',
@@ -1794,13 +1901,17 @@ async function getConfig(env) {
       WEBHOOK_METHOD: config.WEBHOOK_METHOD || 'POST',
       WEBHOOK_HEADERS: config.WEBHOOK_HEADERS || '',
       WEBHOOK_TEMPLATE: config.WEBHOOK_TEMPLATE || '',
+      WECHATBOT_WEBHOOK: config.WECHATBOT_WEBHOOK || '',
+      WECHATBOT_MSG_TYPE: config.WECHATBOT_MSG_TYPE || 'text',
+      WECHATBOT_AT_MOBILES: config.WECHATBOT_AT_MOBILES || '',
+      WECHATBOT_AT_ALL: config.WECHATBOT_AT_ALL || 'false',
       ENABLED_NOTIFIERS: config.ENABLED_NOTIFIERS || ['notifyx']
     };
   } catch (error) {
     return {
       ADMIN_USERNAME: 'admin',
       ADMIN_PASSWORD: 'password',
-      JWT_SECRET: 'your-secret-key',
+      JWT_SECRET: generateRandomSecret(),
       TG_BOT_TOKEN: '',
       TG_CHAT_ID: '',
       NOTIFYX_API_KEY: '',
@@ -1808,6 +1919,10 @@ async function getConfig(env) {
       WEBHOOK_METHOD: 'POST',
       WEBHOOK_HEADERS: '',
       WEBHOOK_TEMPLATE: '',
+      WECHATBOT_WEBHOOK: '',
+      WECHATBOT_MSG_TYPE: 'text',
+      WECHATBOT_AT_MOBILES: '',
+      WECHATBOT_AT_ALL: 'false',
       ENABLED_NOTIFIERS: ['notifyx']
     };
   }
@@ -2088,6 +2203,93 @@ async function sendWeComNotification(message, config) {
     return { success: false, message: "企业微信通知功能未实现" };
 }
 
+async function sendWechatBotNotification(title, content, config) {
+  try {
+    if (!config.WECHATBOT_WEBHOOK) {
+      console.error('[企业微信机器人] 通知未配置，缺少Webhook URL');
+      return false;
+    }
+
+    console.log('[企业微信机器人] 开始发送通知到: ' + config.WECHATBOT_WEBHOOK);
+
+    // 构建消息内容
+    let messageData;
+    const msgType = config.WECHATBOT_MSG_TYPE || 'text';
+
+    if (msgType === 'markdown') {
+      // Markdown 消息格式
+      const markdownContent = `# ${title}\n\n${content}`;
+      messageData = {
+        msgtype: 'markdown',
+        markdown: {
+          content: markdownContent
+        }
+      };
+    } else {
+      // 文本消息格式
+      const textContent = `${title}\n\n${content}`;
+      messageData = {
+        msgtype: 'text',
+        text: {
+          content: textContent
+        }
+      };
+    }
+
+    // 处理@功能
+    if (config.WECHATBOT_AT_ALL === 'true') {
+      // @所有人
+      if (msgType === 'text') {
+        messageData.text.mentioned_list = ['@all'];
+      }
+    } else if (config.WECHATBOT_AT_MOBILES) {
+      // @指定手机号
+      const mobiles = config.WECHATBOT_AT_MOBILES.split(',').map(m => m.trim()).filter(m => m);
+      if (mobiles.length > 0) {
+        if (msgType === 'text') {
+          messageData.text.mentioned_mobile_list = mobiles;
+        }
+      }
+    }
+
+    console.log('[企业微信机器人] 发送消息数据:', JSON.stringify(messageData, null, 2));
+
+    const response = await fetch(config.WECHATBOT_WEBHOOK, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(messageData)
+    });
+
+    const responseText = await response.text();
+    console.log('[企业微信机器人] 响应状态:', response.status);
+    console.log('[企业微信机器人] 响应内容:', responseText);
+
+    if (response.ok) {
+      try {
+        const result = JSON.parse(responseText);
+        if (result.errcode === 0) {
+          console.log('[企业微信机器人] 通知发送成功');
+          return true;
+        } else {
+          console.error('[企业微信机器人] 发送失败，错误码:', result.errcode, '错误信息:', result.errmsg);
+          return false;
+        }
+      } catch (parseError) {
+        console.error('[企业微信机器人] 解析响应失败:', parseError);
+        return false;
+      }
+    } else {
+      console.error('[企业微信机器人] HTTP请求失败，状态码:', response.status);
+      return false;
+    }
+  } catch (error) {
+    console.error('[企业微信机器人] 发送通知失败:', error);
+    return false;
+  }
+}
+
 async function sendNotificationToAllChannels(title, commonContent, config, logPrefix = '[定时任务]') {
     if (!config.ENABLED_NOTIFIERS || config.ENABLED_NOTIFIERS.length === 0) {
         console.log(`${logPrefix} 未启用任何通知渠道。`);
@@ -2108,6 +2310,11 @@ async function sendNotificationToAllChannels(title, commonContent, config, logPr
         const webhookContent = commonContent.replace(/(\**|\*|##|#|`)/g, '');
         const success = await sendWebhookNotification(title, webhookContent, config);
         console.log(`${logPrefix} 发送企业微信应用通知 ${success ? '成功' : '失败'}`);
+    }
+    if (config.ENABLED_NOTIFIERS.includes('wechatbot')) {
+        const wechatbotContent = commonContent.replace(/(\**|\*|##|#|`)/g, '');
+        const success = await sendWechatBotNotification(title, wechatbotContent, config);
+        console.log(`${logPrefix} 发送企业微信机器人通知 ${success ? '成功' : '失败'}`);
     }
     if (config.ENABLED_NOTIFIERS.includes('weixin')) {
         const weixinContent = `【${title}】\n\n${commonContent.replace(/(\**|\*|##|#|`)/g, '')}`;
