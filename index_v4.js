@@ -730,7 +730,9 @@ const adminPage = `
           row.innerHTML =
             '<td class="px-6 py-4 whitespace-nowrap">' +
               '<div class="text-sm font-medium text-gray-900">' + subscription.name + '</div>' +
-              (subscription.notes ? '<div class="text-xs text-gray-500">' + subscription.notes + '</div>' : '') +
+              (subscription.notes ?
+                '<div class="text-xs text-gray-500 max-w-xs truncate break-all" style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="' + subscription.notes.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;') + '">' + subscription.notes + '</div>'
+                : '') +
             '</td>' +
             '<td class="px-6 py-4 whitespace-nowrap">' +
               '<div class="text-sm text-gray-900">' +
@@ -904,11 +906,12 @@ const adminPage = `
       document.getElementById('subscriptionModal').classList.add('hidden');
     });
     
-    document.getElementById('subscriptionModal').addEventListener('click', (event) => {
-      if (event.target === document.getElementById('subscriptionModal')) {
-        document.getElementById('subscriptionModal').classList.add('hidden');
-      }
-    });
+    // 禁止点击弹窗外区域关闭弹窗，防止误操作丢失内容
+    // document.getElementById('subscriptionModal').addEventListener('click', (event) => {
+    //   if (event.target === document.getElementById('subscriptionModal')) {
+    //     document.getElementById('subscriptionModal').classList.add('hidden');
+    //   }
+    // });
     
     document.getElementById('subscriptionForm').addEventListener('submit', async (e) => {
       e.preventDefault();
