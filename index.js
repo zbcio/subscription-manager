@@ -1964,29 +1964,44 @@ const configPage = `
 // 管理页面
 const admin = {
   async handleRequest(request, env, ctx) {
-    const url = new URL(request.url);
-    const pathname = url.pathname;
+    try {
+      const url = new URL(request.url);
+      const pathname = url.pathname;
 
-    const token = getCookieValue(request.headers.get('Cookie'), 'token');
-    const config = await getConfig(env);
-    const user = token ? await verifyJWT(token, config.JWT_SECRET) : null;
+      console.log('[管理页面] 访问路径:', pathname);
 
-    if (!user) {
-      return new Response('', {
-        status: 302,
-        headers: { 'Location': '/' }
-      });
-    }
+      const token = getCookieValue(request.headers.get('Cookie'), 'token');
+      console.log('[管理页面] Token存在:', !!token);
 
-    if (pathname === '/admin/config') {
-      return new Response(configPage, {
+      const config = await getConfig(env);
+      const user = token ? await verifyJWT(token, config.JWT_SECRET) : null;
+
+      console.log('[管理页面] 用户验证结果:', !!user);
+
+      if (!user) {
+        console.log('[管理页面] 用户未登录，重定向到登录页面');
+        return new Response('', {
+          status: 302,
+          headers: { 'Location': '/' }
+        });
+      }
+
+      if (pathname === '/admin/config') {
+        return new Response(configPage, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        });
+      }
+
+      return new Response(adminPage, {
         headers: { 'Content-Type': 'text/html; charset=utf-8' }
       });
+    } catch (error) {
+      console.error('[管理页面] 处理请求时出错:', error);
+      return new Response('服务器内部错误', {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+      });
     }
-
-    return new Response(adminPage, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8' }
-    });
   }
 };
 
@@ -2318,13 +2333,31 @@ function generateRandomSecret() {
 
 async function getConfig(env) {
   try {
+    if (!env.SUBSCRIPTIONS_KV) {
+      console.error('[配置] KV存储未绑定');
+      throw new Error('KV存储未绑定');
+    }
+
     const data = await env.SUBSCRIPTIONS_KV.get('config');
+    console.log('[配置] 从KV读取配置:', data ? '成功' : '空配置');
+
     const config = data ? JSON.parse(data) : {};
 
-    return {
+    // 确保JWT_SECRET的一致性
+    let jwtSecret = config.JWT_SECRET;
+    if (!jwtSecret || jwtSecret === 'your-secret-key') {
+      jwtSecret = generateRandomSecret();
+      console.log('[配置] 生成新的JWT密钥');
+
+      // 保存新的JWT密钥
+      const updatedConfig = { ...config, JWT_SECRET: jwtSecret };
+      await env.SUBSCRIPTIONS_KV.put('config', JSON.stringify(updatedConfig));
+    }
+
+    const finalConfig = {
       ADMIN_USERNAME: config.ADMIN_USERNAME || 'admin',
       ADMIN_PASSWORD: config.ADMIN_PASSWORD || 'password',
-      JWT_SECRET: config.JWT_SECRET || generateRandomSecret(),
+      JWT_SECRET: jwtSecret,
       TG_BOT_TOKEN: config.TG_BOT_TOKEN || '',
       TG_CHAT_ID: config.TG_CHAT_ID || '',
       NOTIFYX_API_KEY: config.NOTIFYX_API_KEY || '',
@@ -2339,11 +2372,17 @@ async function getConfig(env) {
       WECHATBOT_AT_ALL: config.WECHATBOT_AT_ALL || 'false',
       ENABLED_NOTIFIERS: config.ENABLED_NOTIFIERS || ['notifyx']
     };
+
+    console.log('[配置] 最终配置用户名:', finalConfig.ADMIN_USERNAME);
+    return finalConfig;
   } catch (error) {
+    console.error('[配置] 获取配置失败:', error);
+    const defaultJwtSecret = generateRandomSecret();
+
     return {
       ADMIN_USERNAME: 'admin',
       ADMIN_PASSWORD: 'password',
-      JWT_SECRET: generateRandomSecret(),
+      JWT_SECRET: defaultJwtSecret,
       TG_BOT_TOKEN: '',
       TG_CHAT_ID: '',
       NOTIFYX_API_KEY: '',
@@ -2376,18 +2415,31 @@ async function generateJWT(username, secret) {
 
 async function verifyJWT(token, secret) {
   try {
+    if (!token || !secret) {
+      console.log('[JWT] Token或Secret为空');
+      return null;
+    }
+
     const parts = token.split('.');
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) {
+      console.log('[JWT] Token格式错误，部分数量:', parts.length);
+      return null;
+    }
 
     const [headerBase64, payloadBase64, signature] = parts;
     const signatureInput = headerBase64 + '.' + payloadBase64;
     const expectedSignature = await CryptoJS.HmacSHA256(signatureInput, secret);
 
-    if (signature !== expectedSignature) return null;
+    if (signature !== expectedSignature) {
+      console.log('[JWT] 签名验证失败');
+      return null;
+    }
 
     const payload = JSON.parse(atob(payloadBase64));
+    console.log('[JWT] 验证成功，用户:', payload.username);
     return payload;
   } catch (error) {
+    console.error('[JWT] 验证过程出错:', error);
     return null;
   }
 }
@@ -3025,6 +3077,66 @@ const CryptoJS = {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // 添加调试页面
+    if (url.pathname === '/debug') {
+      try {
+        const config = await getConfig(env);
+        const debugInfo = {
+          timestamp: new Date().toISOString(),
+          pathname: url.pathname,
+          kvBinding: !!env.SUBSCRIPTIONS_KV,
+          configExists: !!config,
+          adminUsername: config.ADMIN_USERNAME,
+          hasJwtSecret: !!config.JWT_SECRET,
+          jwtSecretLength: config.JWT_SECRET ? config.JWT_SECRET.length : 0
+        };
+
+        return new Response(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>调试信息</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+    .info { background: white; padding: 15px; margin: 10px 0; border-radius: 5px; }
+    .success { color: green; }
+    .error { color: red; }
+  </style>
+</head>
+<body>
+  <h1>系统调试信息</h1>
+  <div class="info">
+    <h3>基本信息</h3>
+    <p>时间: ${debugInfo.timestamp}</p>
+    <p>路径: ${debugInfo.pathname}</p>
+    <p class="${debugInfo.kvBinding ? 'success' : 'error'}">KV绑定: ${debugInfo.kvBinding ? '✓' : '✗'}</p>
+  </div>
+
+  <div class="info">
+    <h3>配置信息</h3>
+    <p class="${debugInfo.configExists ? 'success' : 'error'}">配置存在: ${debugInfo.configExists ? '✓' : '✗'}</p>
+    <p>管理员用户名: ${debugInfo.adminUsername}</p>
+    <p class="${debugInfo.hasJwtSecret ? 'success' : 'error'}">JWT密钥: ${debugInfo.hasJwtSecret ? '✓' : '✗'} (长度: ${debugInfo.jwtSecretLength})</p>
+  </div>
+
+  <div class="info">
+    <h3>解决方案</h3>
+    <p>1. 确保KV命名空间已正确绑定为 SUBSCRIPTIONS_KV</p>
+    <p>2. 尝试访问 <a href="/">/</a> 进行登录</p>
+    <p>3. 如果仍有问题，请检查Cloudflare Workers日志</p>
+  </div>
+</body>
+</html>`, {
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        });
+      } catch (error) {
+        return new Response(`调试页面错误: ${error.message}`, {
+          status: 500,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+        });
+      }
+    }
 
     if (url.pathname.startsWith('/api')) {
       return api.handleRequest(request, env, ctx);
