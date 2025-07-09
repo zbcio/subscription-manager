@@ -425,23 +425,34 @@ const adminPage = `
     }
 
     /* 响应式优化 */
-    @media (max-width: 768px) {
-      .table-container {
-        overflow-x: auto;
-      }
+    .responsive-table { table-layout: fixed; width: 100%; }
+    .td-content-wrapper { word-wrap: break-word; white-space: normal; text-align: left; width: 100%; }
+    .td-content-wrapper > * { text-align: left; } /* Align content left within the wrapper */
+
+    @media (max-width: 767px) {
+      .table-container { overflow-x: initial; } /* Override previous setting */
+      .responsive-table thead { display: none; }
+      .responsive-table tbody, .responsive-table tr, .responsive-table td { display: block; width: 100%; }
+      .responsive-table tr { margin-bottom: 1.5rem; border: 1px solid #ddd; border-radius: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden; }
+      .responsive-table td { display: flex; justify-content: flex-start; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid #eee; }
+      .responsive-table td:last-of-type { border-bottom: none; }
+      .responsive-table td:before { content: attr(data-label); font-weight: 600; text-align: left; padding-right: 1rem; color: #374151; white-space: nowrap; }
+      .action-buttons-wrapper { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
+      
       .notes-container, .hover-container {
-        max-width: 120px;
+        max-width: 180px; /* Adjust for new layout */
+        text-align: right;
       }
-      .notes-tooltip, .hover-tooltip {
-        max-width: 250px;
-        left: -50px;
+      .td-content-wrapper .notes-text {
+        text-align: right;
       }
     }
 
-    @media (min-width: 769px) {
+    @media (min-width: 768px) {
       .table-container {
         overflow: visible;
       }
+      /* .td-content-wrapper is aligned left by default */
     }
 
     /* Toast 样式 */
@@ -498,7 +509,7 @@ const adminPage = `
     
     <div class="table-container bg-white rounded-lg overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="w-full divide-y divide-gray-200">
+        <table class="w-full divide-y divide-gray-200 responsive-table">
           <thead class="bg-gray-50">
             <tr>
               <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style="width: 25%;">
@@ -1038,27 +1049,27 @@ const adminPage = `
           const startDateHtml = startDateText ? createHoverText(startDateText, 30, 'text-xs text-gray-500 mt-1') : '';
 
           row.innerHTML =
-            '<td class="px-4 py-3">' +
+            '<td data-label="名称" class="px-4 py-3"><div class="td-content-wrapper">' +
               nameHtml +
               notesHtml +
-            '</td>' +
-            '<td class="px-4 py-3">' +
+            '</div></td>' +
+            '<td data-label="类型" class="px-4 py-3"><div class="td-content-wrapper">' +
               '<div class="flex items-center"><i class="fas fa-tag mr-1"></i><span>' + typeHtml + '</span></div>' +
               (periodHtml ? '<div class="flex items-center">' + periodHtml + autoRenewIcon + '</div>' : '') +
-            '</td>' +
-            '<td class="px-4 py-3">' +
+            '</div></td>' +
+            '<td data-label="到期时间" class="px-4 py-3"><div class="td-content-wrapper">' +
               '<div class="text-sm text-gray-900">' + expiryDateText + '</div>' +
               lunarHtml +
               '<div class="text-xs text-gray-500 mt-1">' + daysLeftText + '</div>' +
               startDateHtml +
-            '</td>' +
-            '<td class="px-4 py-3 text-sm text-gray-900">' +
+            '</div></td>' +
+            '<td data-label="提醒设置" class="px-4 py-3"><div class="td-content-wrapper">' +
               '<div><i class="fas fa-bell mr-1"></i>提前' + (subscription.reminderDays || 0) + '天</div>' +
               (subscription.reminderDays === 0 ? '<div class="text-xs text-gray-500 mt-1">仅到期日提醒</div>' : '') +
-            '</td>' +
-            '<td class="px-4 py-3">' + statusHtml + '</td>' +
-            '<td class="px-4 py-3 text-sm font-medium">' +
-              '<div class="flex flex-col gap-1 lg:flex-row lg:flex-wrap">' +
+            '</div></td>' +
+            '<td data-label="状态" class="px-4 py-3"><div class="td-content-wrapper">' + statusHtml + '</div></td>' +
+            '<td data-label="操作" class="px-4 py-3">' +
+              '<div class="action-buttons-wrapper">' +
                 '<button class="edit btn-primary text-white px-2 py-1 rounded text-xs whitespace-nowrap" data-id="' + subscription.id + '"><i class="fas fa-edit mr-1"></i>编辑</button>' +
                 '<button class="test-notify btn-info text-white px-2 py-1 rounded text-xs whitespace-nowrap" data-id="' + subscription.id + '"><i class="fas fa-paper-plane mr-1"></i>测试</button>' +
                 '<button class="delete btn-danger text-white px-2 py-1 rounded text-xs whitespace-nowrap" data-id="' + subscription.id + '"><i class="fas fa-trash-alt mr-1"></i>删除</button>' +
