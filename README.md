@@ -16,6 +16,8 @@
 - **Telegram**：支持 Telegram Bot 通知
 - **NotifyX**：集成 NotifyX 推送服务
 - **企业微信应用通知**：支持企业微信应用推送
+- **企业微信机器人**：支持企业微信群机器人通知
+- **邮件通知**：基于 Resend 的专业邮件服务
 - **自定义 Webhook**：支持自定义请求格式和模板
 
 ### 🌙 农历功能
@@ -63,6 +65,12 @@ Fork仓库,然后点击自己仓库里的部署按钮，等待部署完成,**注
 
 ### NotifyX
 - **API Key**: 从 [NotifyX官网](https://www.notifyx.cn/) 获取
+
+### 邮件通知 (Resend)
+- **API Key**: 从 [Resend官方教程](https://developers.cloudflare.com/workers/tutorials/send-emails-with-resend/) 获取
+- **发件人邮箱**: 必须是已在Resend验证的域名邮箱
+- **收件人邮箱**: 接收通知的邮箱地址
+- 支持HTML格式的美观邮件模板
 
 ### 企业微信应用通知
 - **推送 URL**: 从 [企业微信应用通知平台](https://push.996007.icu) 获取
