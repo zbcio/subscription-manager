@@ -2164,6 +2164,10 @@ const api = {
             WECHATBOT_MSG_TYPE: newConfig.WECHATBOT_MSG_TYPE || 'text',
             WECHATBOT_AT_MOBILES: newConfig.WECHATBOT_AT_MOBILES || '',
             WECHATBOT_AT_ALL: newConfig.WECHATBOT_AT_ALL || 'false',
+            RESEND_API_KEY: newConfig.RESEND_API_KEY || '',
+            EMAIL_FROM: newConfig.EMAIL_FROM || '',
+            EMAIL_FROM_NAME: newConfig.EMAIL_FROM_NAME || '',
+            EMAIL_TO: newConfig.EMAIL_TO || '',
             ENABLED_NOTIFIERS: newConfig.ENABLED_NOTIFIERS || ['notifyx']
           };
 
@@ -2463,6 +2467,10 @@ async function getConfig(env) {
       WECHATBOT_MSG_TYPE: config.WECHATBOT_MSG_TYPE || 'text',
       WECHATBOT_AT_MOBILES: config.WECHATBOT_AT_MOBILES || '',
       WECHATBOT_AT_ALL: config.WECHATBOT_AT_ALL || 'false',
+      RESEND_API_KEY: config.RESEND_API_KEY || '',
+      EMAIL_FROM: config.EMAIL_FROM || '',
+      EMAIL_FROM_NAME: config.EMAIL_FROM_NAME || '',
+      EMAIL_TO: config.EMAIL_TO || '',
       ENABLED_NOTIFIERS: config.ENABLED_NOTIFIERS || ['notifyx']
     };
 
@@ -2488,6 +2496,10 @@ async function getConfig(env) {
       WECHATBOT_MSG_TYPE: 'text',
       WECHATBOT_AT_MOBILES: '',
       WECHATBOT_AT_ALL: 'false',
+      RESEND_API_KEY: '',
+      EMAIL_FROM: '',
+      EMAIL_FROM_NAME: '',
+      EMAIL_TO: '',
       ENABLED_NOTIFIERS: ['notifyx']
     };
   }
