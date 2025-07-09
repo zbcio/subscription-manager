@@ -2164,6 +2164,10 @@ const api = {
             WECHATBOT_MSG_TYPE: newConfig.WECHATBOT_MSG_TYPE || 'text',
             WECHATBOT_AT_MOBILES: newConfig.WECHATBOT_AT_MOBILES || '',
             WECHATBOT_AT_ALL: newConfig.WECHATBOT_AT_ALL || 'false',
+            RESEND_API_KEY: newConfig.RESEND_API_KEY || '',
+            EMAIL_FROM: newConfig.EMAIL_FROM || '',
+            EMAIL_FROM_NAME: newConfig.EMAIL_FROM_NAME || '',
+            EMAIL_TO: newConfig.EMAIL_TO || '',
             ENABLED_NOTIFIERS: newConfig.ENABLED_NOTIFIERS || ['notifyx']
           };
 
