@@ -1,5 +1,32 @@
 // 订阅续期通知网站 - 基于CloudFlare Workers (完全优化版)
 
+// 时区工具函数
+function formatBeijingTime(date = new Date(), format = 'full') {
+  if (format === 'date') {
+    return date.toLocaleDateString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  } else if (format === 'datetime') {
+    return date.toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  } else {
+    // full format
+    return date.toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai'
+    });
+  }
+}
+
 // 农历转换工具函数
 const lunarCalendar = {
   // 农历数据 (1900-2100年)
@@ -670,6 +697,33 @@ const adminPage = `
   </div>
 
   <script>
+    // 时区工具函数 - 前端版本
+    function formatBeijingTime(date = new Date(), format = 'full') {
+      if (format === 'date') {
+        return date.toLocaleDateString('zh-CN', {
+          timeZone: 'Asia/Shanghai',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+      } else if (format === 'datetime') {
+        return date.toLocaleString('zh-CN', {
+          timeZone: 'Asia/Shanghai',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+      } else {
+        // full format
+        return date.toLocaleString('zh-CN', {
+          timeZone: 'Asia/Shanghai'
+        });
+      }
+    }
+
     // 农历转换工具函数 - 前端版本
     const lunarCalendar = {
       // 农历数据 (1900-2100年)
@@ -1041,11 +1095,11 @@ const adminPage = `
           const periodHtml = periodText ? createHoverText('周期: ' + periodText, 20, 'text-xs text-gray-500 mt-1') : '';
 
           // 到期时间相关信息
-          const expiryDateText = new Date(subscription.expiryDate).toLocaleDateString();
+          const expiryDateText = formatBeijingTime(new Date(subscription.expiryDate), 'date');
           const lunarHtml = lunarExpiryText ? createHoverText('农历: ' + lunarExpiryText, 25, 'text-xs text-blue-600 mt-1') : '';
           const daysLeftText = daysDiff < 0 ? '已过期' + Math.abs(daysDiff) + '天' : '还剩' + daysDiff + '天';
           const startDateText = subscription.startDate ?
-            '开始: ' + new Date(subscription.startDate).toLocaleDateString() + (startLunarText ? ' (' + startLunarText + ')' : '') : '';
+            '开始: ' + formatBeijingTime(new Date(subscription.startDate), 'date') + (startLunarText ? ' (' + startLunarText + ')' : '') : '';
           const startDateHtml = startDateText ? createHoverText(startDateText, 30, 'text-xs text-gray-500 mt-1') : '';
 
           row.innerHTML =
@@ -1796,7 +1850,10 @@ const configPage = `
         document.getElementById('emailFrom').value = config.EMAIL_FROM || '';
         document.getElementById('emailFromName').value = config.EMAIL_FROM_NAME || '订阅提醒系统';
         document.getElementById('emailTo').value = config.EMAIL_TO || '';
-  
+
+        // 加载农历显示设置
+        document.getElementById('showLunarGlobal').checked = config.SHOW_LUNAR === true;
+
         // 处理多选通知渠道
         const enabledNotifiers = config.ENABLED_NOTIFIERS || ['notifyx'];
         document.querySelectorAll('input[name="enabledNotifiers"]').forEach(checkbox => {
@@ -2159,7 +2216,7 @@ const api = {
             WEBHOOK_METHOD: newConfig.WEBHOOK_METHOD || 'POST',
             WEBHOOK_HEADERS: newConfig.WEBHOOK_HEADERS || '',
             WEBHOOK_TEMPLATE: newConfig.WEBHOOK_TEMPLATE || '',
-            SHOW_LUNAR: newConfig.SHOW_LUNAR !== false,
+            SHOW_LUNAR: newConfig.SHOW_LUNAR === true,
             WECHATBOT_WEBHOOK: newConfig.WECHATBOT_WEBHOOK || '',
             WECHATBOT_MSG_TYPE: newConfig.WECHATBOT_MSG_TYPE || 'text',
             WECHATBOT_AT_MOBILES: newConfig.WECHATBOT_AT_MOBILES || '',
@@ -2210,7 +2267,7 @@ const api = {
             TG_CHAT_ID: body.TG_CHAT_ID
           };
 
-          const content = '*测试通知*\n\n这是一条测试通知，用于验证Telegram通知功能是否正常工作。\n\n发送时间: ' + new Date().toLocaleString();
+          const content = '*测试通知*\n\n这是一条测试通知，用于验证Telegram通知功能是否正常工作。\n\n发送时间: ' + formatBeijingTime();
           success = await sendTelegramNotification(content, testConfig);
           message = success ? 'Telegram通知发送成功' : 'Telegram通知发送失败，请检查配置';
         } else if (body.type === 'notifyx') {
@@ -2220,7 +2277,7 @@ const api = {
           };
 
           const title = '测试通知';
-          const content = '## 这是一条测试通知\n\n用于验证NotifyX通知功能是否正常工作。\n\n发送时间: ' + new Date().toLocaleString();
+          const content = '## 这是一条测试通知\n\n用于验证NotifyX通知功能是否正常工作。\n\n发送时间: ' + formatBeijingTime();
           const description = '测试NotifyX通知功能';
 
           success = await sendNotifyXNotification(title, content, description, testConfig);
@@ -2235,7 +2292,7 @@ const api = {
           };
 
           const title = '测试通知';
-          const content = '这是一条测试通知，用于验证企业微信应用通知功能是否正常工作。\n\n发送时间: ' + new Date().toLocaleString();
+          const content = '这是一条测试通知，用于验证企业微信应用通知功能是否正常工作。\n\n发送时间: ' + formatBeijingTime();
 
           success = await sendWebhookNotification(title, content, testConfig);
           message = success ? '企业微信应用通知发送成功' : '企业微信应用通知发送失败，请检查配置';
@@ -2249,7 +2306,7 @@ const api = {
           };
 
           const title = '测试通知';
-          const content = '这是一条测试通知，用于验证企业微信机器人功能是否正常工作。\n\n发送时间: ' + new Date().toLocaleString();
+          const content = '这是一条测试通知，用于验证企业微信机器人功能是否正常工作。\n\n发送时间: ' + formatBeijingTime();
 
           success = await sendWechatBotNotification(title, content, testConfig);
           message = success ? '企业微信机器人通知发送成功' : '企业微信机器人通知发送失败，请检查配置';
@@ -2263,7 +2320,7 @@ const api = {
           };
 
           const title = '测试通知';
-          const content = '这是一条测试通知，用于验证邮件通知功能是否正常工作。\n\n发送时间: ' + new Date().toLocaleString();
+          const content = '这是一条测试通知，用于验证邮件通知功能是否正常工作。\n\n发送时间: ' + formatBeijingTime();
 
           success = await sendEmailNotification(title, content, testConfig);
           message = success ? '邮件通知发送成功' : '邮件通知发送失败，请检查配置';
@@ -2462,7 +2519,7 @@ async function getConfig(env) {
       WEBHOOK_METHOD: config.WEBHOOK_METHOD || 'POST',
       WEBHOOK_HEADERS: config.WEBHOOK_HEADERS || '',
       WEBHOOK_TEMPLATE: config.WEBHOOK_TEMPLATE || '',
-      SHOW_LUNAR: config.SHOW_LUNAR !== false,
+      SHOW_LUNAR: config.SHOW_LUNAR === true,
       WECHATBOT_WEBHOOK: config.WECHATBOT_WEBHOOK || '',
       WECHATBOT_MSG_TYPE: config.WECHATBOT_MSG_TYPE || 'text',
       WECHATBOT_AT_MOBILES: config.WECHATBOT_AT_MOBILES || '',
@@ -2714,8 +2771,8 @@ async function testSingleSubscriptionNotification(id, env) {
 
     const title = `手动测试通知: ${subscription.name}`;
 
-    // 检查是否显示农历（从配置中获取，默认显示）
-    const showLunar = config.SHOW_LUNAR !== false;
+    // 检查是否显示农历（从配置中获取，默认不显示）
+    const showLunar = config.SHOW_LUNAR === true;
     let lunarExpiryText = '';
 
     if (showLunar) {
@@ -2725,7 +2782,7 @@ async function testSingleSubscriptionNotification(id, env) {
       lunarExpiryText = lunarExpiry ? ` (农历: ${lunarExpiry.fullStr})` : '';
     }
 
-    const commonContent = `**订阅详情**:\n- **类型**: ${subscription.customType || '其他'}\n- **到期日**: ${new Date(subscription.expiryDate).toLocaleDateString()}${lunarExpiryText}\n- **备注**: ${subscription.notes || '无'}`;
+    const commonContent = `**订阅详情**:\n- **类型**: ${subscription.customType || '其他'}\n- **到期日**: ${formatBeijingTime(new Date(subscription.expiryDate), 'date')}${lunarExpiryText}\n- **备注**: ${subscription.notes || '无'}`;
 
     // 使用多渠道发送
     await sendNotificationToAllChannels(title, commonContent, config, '[手动测试]');
@@ -2747,7 +2804,7 @@ async function sendWebhookNotification(title, content, config) {
 
     console.log('[企业微信应用通知] 开始发送通知到: ' + config.WEBHOOK_URL);
 
-    const timestamp = new Date().toISOString();
+    const timestamp = formatBeijingTime(new Date(), 'datetime');
     let requestBody;
     let headers = { 'Content-Type': 'application/json' };
 
@@ -3024,7 +3081,7 @@ async function sendEmailNotification(title, content, config) {
             <p>此邮件由订阅管理系统自动发送，请及时处理相关订阅事务。</p>
         </div>
         <div class="footer">
-            <p>订阅管理系统 | 发送时间: ${new Date().toLocaleString()}</p>
+            <p>订阅管理系统 | 发送时间: ${formatBeijingTime()}</p>
         </div>
     </div>
 </body>
@@ -3076,13 +3133,14 @@ async function sendNotification(title, content, description, config) {
 // 定时检查即将到期的订阅 - 完全优化版
 async function checkExpiringSubscriptions(env) {
   try {
-    console.log('[定时任务] 开始检查即将到期的订阅: ' + new Date().toISOString());
+    const now = new Date();
+    const beijingTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    console.log('[定时任务] 开始检查即将到期的订阅 UTC: ' + now.toISOString() + ', 北京时间: ' + beijingTime.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'}));
 
     const subscriptions = await getAllSubscriptions(env);
     console.log('[定时任务] 共找到 ' + subscriptions.length + ' 个订阅');
 
     const config = await getConfig(env);
-    const now = new Date();
     const expiringSubscriptions = [];
     const updatedSubscriptions = [];
     let hasUpdates = false;
@@ -3191,8 +3249,8 @@ async function checkExpiringSubscriptions(env) {
       let commonContent = '';
       expiringSubscriptions.sort((a, b) => a.daysRemaining - b.daysRemaining);
 
-      // 检查是否显示农历（从配置中获取，默认显示）
-      const showLunar = config.SHOW_LUNAR !== false;
+      // 检查是否显示农历（从配置中获取，默认不显示）
+      const showLunar = config.SHOW_LUNAR === true;
 
       for (const sub of expiringSubscriptions) {
         const typeText = sub.customType || '其他';
@@ -3341,7 +3399,9 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    console.log('[Workers] 定时任务触发时间:', new Date().toISOString());
+    const now = new Date();
+    const beijingTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    console.log('[Workers] 定时任务触发 UTC:', now.toISOString(), '北京时间:', beijingTime.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'}));
     await checkExpiringSubscriptions(env);
   }
 };
