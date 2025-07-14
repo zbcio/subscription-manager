@@ -142,3 +142,7 @@ Fork仓库,然后点击自己仓库里的部署按钮，等待部署完成,**注
 
 MIT License
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=wangwangit/SubsTracker&type=Date)](https://www.star-history.com/#wangwangit/SubsTracker&Date)
+
