@@ -168,14 +168,37 @@ const lunarBiz = {
     let { year, month, day, isLeap } = lunar;
     if (periodUnit === 'year') {
       year += periodValue;
+      const leap = lunarCalendar.leapMonth(year);
+      if (isLeap && leap === month) {
+        isLeap = true;
+      } else {
+        isLeap = false;
+      }
     } else if (periodUnit === 'month') {
-      let totalMonths = (month - 1) + periodValue;
-      year += Math.floor(totalMonths / 12);
+      let totalMonths = (year - 1900) * 12 + (month - 1) + periodValue;
+      year = Math.floor(totalMonths / 12) + 1900;
       month = (totalMonths % 12) + 1;
+      const leap = lunarCalendar.leapMonth(year);
+      if (isLeap && leap === month) {
+        isLeap = true;
+      } else {
+        isLeap = false;
+      }
     } else if (periodUnit === 'day') {
       const solar = lunarBiz.lunar2solar(lunar);
-      const date = new Date(solar.year, solar.month - 1, solar.day + periodValue + 1);
+      const date = new Date(solar.year, solar.month - 1, solar.day + periodValue);
       return lunarCalendar.solar2lunar(date.getFullYear(), date.getMonth() + 1, date.getDate());
+    }
+    let maxDay = isLeap
+      ? lunarCalendar.leapDays(year)
+      : lunarCalendar.monthDays(year, month);
+    let targetDay = Math.min(day, maxDay);
+    while (targetDay > 0) {
+      let solar = lunarBiz.lunar2solar({ year, month, day: targetDay, isLeap });
+      if (solar) {
+        return { year, month, day: targetDay, isLeap };
+      }
+      targetDay--;
     }
     return { year, month, day, isLeap };
   },
@@ -652,7 +675,7 @@ const adminPage = `
             <span class="text-gray-700">显示农历日期</span>
           </label>
         </div>
-		<!-- 新增修改，在表单添加“周期按农历”复选框，建议放在“显示农历日期”下方 -->
+		<!-- 新增修改，在表单添加"周期按农历"复选框，建议放在"显示农历日期"下方 -->
 		<div class="mb-4">
 		  <label class="lunar-toggle">
 			<input type="checkbox" id="useLunar" class="form-checkbox h-4 w-4 text-indigo-600">
@@ -961,14 +984,13 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
     }
   } else if (periodUnit === 'day') {
     const solar = lunar2solar(lunar);
-    const date = new Date(solar.year, solar.month - 1, solar.day + periodValue + 1);
+    const date = new Date(solar.year, solar.month - 1, solar.day + periodValue);
     return lunarCalendar.solar2lunar(date.getFullYear(), date.getMonth() + 1, date.getDate());
   }
   let maxDay = isLeap
     ? lunarCalendar.leapDays(year)
     : lunarCalendar.monthDays(year, month);
   let targetDay = Math.min(day, maxDay);
-  if (targetDay < maxDay) targetDay += 1;
   while (targetDay > 0) {
     let solar = lunar2solar({ year, month, day: targetDay, isLeap });
     if (solar) {
@@ -1508,10 +1530,24 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
 		const lunar = lunarCalendar.solar2lunar(start.getFullYear(), start.getMonth() + 1, start.getDate());
 		let nextLunar = addLunarPeriod(lunar, periodValue, periodUnit);
 		const solar = lunar2solar(nextLunar);
-		const expiry = new Date(solar.year, solar.month - 1, solar.day);
-		console.log('nextLunar:', expiry);
+		//const expiry = new Date(solar.year, solar.month - 1, solar.day);
+		
+		  // 使用与公历相同的方式创建日期  
+  const expiry = new Date(startDate); // 从原始日期开始  
+  expiry.setFullYear(solar.year);  
+  expiry.setMonth(solar.month - 1);  
+  expiry.setDate(solar.day);  
 		document.getElementById('expiryDate').value = expiry.toISOString().split('T')[0];
+		console.log('start:', start);
 		console.log('nextLunar:', nextLunar);
+		console.log('expiry:', expiry);
+		console.log('expiryDate:', document.getElementById('expiryDate').value);
+		
+		console.log('solar from lunar2solar:', solar);  
+		console.log('solar.year:', solar.year, 'solar.month:', solar.month, 'solar.day:', solar.day);
+		console.log('expiry.getTime():', expiry.getTime());  
+console.log('expiry.toString():', expiry.toString());
+		
 		
 	  } else {
 		// 公历推算
@@ -1525,6 +1561,9 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
 		  expiry.setFullYear(start.getFullYear() + periodValue);
 		}
 		document.getElementById('expiryDate').value = expiry.toISOString().split('T')[0];
+		console.log('start:', start);
+		console.log('expiry:', expiry);
+		console.log('expiryDate:', document.getElementById('expiryDate').value);
 	  }
 
 	  // 更新农历显示
@@ -2792,6 +2831,7 @@ async function createSubscription(subscription, env) {
 
     let expiryDate = new Date(subscription.expiryDate);
     const now = new Date();
+    
 
     let useLunar = !!subscription.useLunar;
     if (useLunar) {
@@ -2800,12 +2840,14 @@ async function createSubscription(subscription, env) {
         expiryDate.getMonth() + 1,
         expiryDate.getDate()
       );
-      if (lunar && expiryDate < now && subscription.periodValue && subscription.periodUnit) {
-        while (lunarBiz.daysToLunar(lunar) < 0) {
+      
+      if (lunar && subscription.periodValue && subscription.periodUnit) {
+        // 如果到期日<=今天，自动推算到下一个周期
+        while (expiryDate <= now) {
           lunar = lunarBiz.addLunarPeriod(lunar, subscription.periodValue, subscription.periodUnit);
+          const solar = lunarBiz.lunar2solar(lunar);
+          expiryDate = new Date(solar.year, solar.month - 1, solar.day);
         }
-        const solar = lunarBiz.lunar2solar(lunar);
-        expiryDate = new Date(solar.year, solar.month - 1, solar.day);
         subscription.expiryDate = expiryDate.toISOString();
       }
     } else {
@@ -2845,7 +2887,8 @@ async function createSubscription(subscription, env) {
 
     return { success: true, subscription: newSubscription };
   } catch (error) {
-    return { success: false, message: '创建订阅失败' };
+    console.error("创建订阅异常：", error && error.stack ? error.stack : error);
+    return { success: false, message: error && error.message ? error.message : '创建订阅失败' };
   }
 }
 
@@ -2866,22 +2909,26 @@ async function updateSubscription(id, subscription, env) {
     let expiryDate = new Date(subscription.expiryDate);
     const now = new Date();
 
-    let useLunar = !!subscription.useLunar;
-    if (useLunar) {
-      let lunar = lunarCalendar.solar2lunar(
-        expiryDate.getFullYear(),
-        expiryDate.getMonth() + 1,
-        expiryDate.getDate()
-      );
-      if (lunar && expiryDate < now && subscription.periodValue && subscription.periodUnit) {
-        while (lunarBiz.daysToLunar(lunar) < 0) {
-          lunar = lunarBiz.addLunarPeriod(lunar, subscription.periodValue, subscription.periodUnit);
-        }
-        const solar = lunarBiz.lunar2solar(lunar);
-        expiryDate = new Date(solar.year, solar.month - 1, solar.day);
-        subscription.expiryDate = expiryDate.toISOString();
-      }
-    } else {
+let useLunar = !!subscription.useLunar;
+if (useLunar) {
+  let lunar = lunarCalendar.solar2lunar(
+    expiryDate.getFullYear(),
+    expiryDate.getMonth() + 1,
+    expiryDate.getDate()
+  );
+  if (!lunar) {
+    return { success: false, message: '农历日期超出支持范围（1900-2100年）' };
+  }
+  if (lunar && expiryDate < now && subscription.periodValue && subscription.periodUnit) {
+    // 新增：循环加周期，直到 expiryDate > now
+    do {
+      lunar = lunarBiz.addLunarPeriod(lunar, subscription.periodValue, subscription.periodUnit);
+      const solar = lunarBiz.lunar2solar(lunar);
+      expiryDate = new Date(solar.year, solar.month - 1, solar.day);
+    } while (expiryDate < now);
+    subscription.expiryDate = expiryDate.toISOString();
+  }
+} else {
       if (expiryDate < now && subscription.periodValue && subscription.periodUnit) {
         while (expiryDate < now) {
           if (subscription.periodUnit === 'day') {
