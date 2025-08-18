@@ -3456,7 +3456,7 @@ for (const subscription of subscriptions) {
         newExpiryDate.setFullYear(expiryDate.getFullYear() + subscription.periodValue);
       }
 
-      while (newExpiryDate < now) {
+      while (newExpiryDate < new Date(now.toISOString().split('T')[0])) {
         console.log('[定时任务] 新计算的到期日期 ' + newExpiryDate.toISOString() + ' 仍然过期，继续计算下一个周期');
         if (subscription.periodUnit === 'day') {
           newExpiryDate.setDate(newExpiryDate.getDate() + subscription.periodValue);
