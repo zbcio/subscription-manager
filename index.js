@@ -1,29 +1,180 @@
 // 订阅续期通知网站 - 基于CloudFlare Workers (完全优化版)
 
-// 时区工具函数
+// 时区处理工具函数
+function getCurrentTimeInTimezone(timezone = 'UTC') {
+  try {
+    // 直接返回当前时间，时区转换在后续计算中处理
+    // 这样可以避免时区信息丢失的问题
+    return new Date();
+  } catch (error) {
+    console.error(`时区转换错误: ${error.message}`);
+    // 如果时区无效，返回UTC时间
+    return new Date();
+  }
+}
+
+function getTimestampInTimezone(timezone = 'UTC') {
+  return getCurrentTimeInTimezone(timezone).getTime();
+}
+
+function convertUTCToTimezone(utcTime, timezone = 'UTC') {
+  try {
+    // 直接返回原始时间，时区转换在后续计算中处理
+    // 这样可以避免时区信息丢失的问题
+    return new Date(utcTime);
+  } catch (error) {
+    console.error(`时区转换错误: ${error.message}`);
+    return new Date(utcTime);
+  }
+}
+
+function calculateExpirationTime(expirationMinutes, timezone = 'UTC') {
+  const currentTime = getCurrentTimeInTimezone(timezone);
+  const expirationTime = new Date(currentTime.getTime() + (expirationMinutes * 60 * 1000));
+  return expirationTime;
+}
+
+function isExpired(targetTime, timezone = 'UTC') {
+  const currentTime = getCurrentTimeInTimezone(timezone);
+  const target = new Date(targetTime);
+  return currentTime > target;
+}
+
+function formatTimeInTimezone(time, timezone = 'UTC', format = 'full') {
+  try {
+    const date = new Date(time);
+    
+    if (format === 'date') {
+      return date.toLocaleDateString('zh-CN', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+    } else if (format === 'datetime') {
+      return date.toLocaleString('zh-CN', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    } else {
+      // full format
+      return date.toLocaleString('zh-CN', {
+        timeZone: timezone
+      });
+    }
+  } catch (error) {
+    console.error(`时间格式化错误: ${error.message}`);
+    return new Date(time).toISOString();
+  }
+}
+
+function getTimezoneOffset(timezone = 'UTC') {
+  try {
+    // 使用更准确的时区偏移计算方法
+    const now = new Date();
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    const parts = dtf.formatToParts(now);
+    const get = type => Number(parts.find(x => x.type === type).value);
+    const target = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+    const utc = now.getTime();
+    return Math.round((target - utc) / (1000 * 60 * 60));
+  } catch (error) {
+    console.error(`获取时区偏移量错误: ${error.message}`);
+    return 0;
+  }
+}
+
+// 格式化时区显示，包含UTC偏移
+function formatTimezoneDisplay(timezone = 'UTC') {
+  try {
+    const offset = getTimezoneOffset(timezone);
+    const offsetStr = offset >= 0 ? `+${offset}` : `${offset}`;
+    
+    // 时区中文名称映射
+    const timezoneNames = {
+      'UTC': '世界标准时间',
+      'Asia/Shanghai': '中国标准时间',
+      'Asia/Hong_Kong': '香港时间',
+      'Asia/Taipei': '台北时间',
+      'Asia/Singapore': '新加坡时间',
+      'Asia/Tokyo': '日本时间',
+      'Asia/Seoul': '韩国时间',
+      'America/New_York': '美国东部时间',
+      'America/Los_Angeles': '美国太平洋时间',
+      'America/Chicago': '美国中部时间',
+      'America/Denver': '美国山地时间',
+      'Europe/London': '英国时间',
+      'Europe/Paris': '巴黎时间',
+      'Europe/Berlin': '柏林时间',
+      'Europe/Moscow': '莫斯科时间',
+      'Australia/Sydney': '悉尼时间',
+      'Australia/Melbourne': '墨尔本时间',
+      'Pacific/Auckland': '奥克兰时间'
+    };
+    
+    const timezoneName = timezoneNames[timezone] || timezone;
+    return `${timezoneName} (UTC${offsetStr})`;
+  } catch (error) {
+    console.error('格式化时区显示失败:', error);
+    return timezone;
+  }
+}
+
+// 兼容性函数 - 保持原有接口
 function formatBeijingTime(date = new Date(), format = 'full') {
-  if (format === 'date') {
-    return date.toLocaleDateString('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    });
-  } else if (format === 'datetime') {
-    return date.toLocaleString('zh-CN', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  } else {
-    // full format
-    return date.toLocaleString('zh-CN', {
-      timeZone: 'Asia/Shanghai'
-    });
+  return formatTimeInTimezone(date, 'Asia/Shanghai', format);
+}
+
+// 时区处理中间件函数
+function extractTimezone(request) {
+  // 优先级：URL参数 > 请求头 > 默认值
+  const url = new URL(request.url);
+  const timezoneParam = url.searchParams.get('timezone');
+  
+  if (timezoneParam) {
+    return timezoneParam;
+  }
+  
+  // 从请求头获取时区
+  const timezoneHeader = request.headers.get('X-Timezone');
+  if (timezoneHeader) {
+    return timezoneHeader;
+  }
+  
+  // 从Accept-Language头推断时区（简化处理）
+  const acceptLanguage = request.headers.get('Accept-Language');
+  if (acceptLanguage) {
+    // 简单的时区推断逻辑
+    if (acceptLanguage.includes('zh')) {
+      return 'Asia/Shanghai';
+    } else if (acceptLanguage.includes('en-US')) {
+      return 'America/New_York';
+    } else if (acceptLanguage.includes('en-GB')) {
+      return 'Europe/London';
+    }
+  }
+  
+  // 默认返回UTC
+  return 'UTC';
+}
+
+function isValidTimezone(timezone) {
+  try {
+    // 尝试使用该时区格式化时间
+    new Date().toLocaleString('en-US', { timeZone: timezone });
+    return true;
+  } catch (error) {
+    return false;
   }
 }
 
@@ -93,7 +244,9 @@ const lunarCalendar = {
 
     const baseDate = new Date(1900, 0, 31);
     const objDate = new Date(year, month - 1, day);
-    let offset = Math.floor((objDate - baseDate) / 86400000);
+    //let offset = Math.floor((objDate - baseDate) / 86400000);
+    let offset = Math.round((objDate - baseDate) / 86400000);
+
 
     let temp = 0;
     let lunarYear = 1900;
@@ -490,6 +643,91 @@ const adminPage = `
     .lunar-display.show {
       opacity: 1;
     }
+    /* 自定义日期选择器样式 */
+    .hidden {
+      display: none !important;
+    }
+    
+    .custom-date-picker {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+      border-radius: 12px;
+      min-width: 380px;
+    }
+    
+    .custom-date-picker .calendar-day {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 60px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      padding: 4px;
+      font-size: 14px;
+    }
+    
+    .custom-date-picker .calendar-day:hover {
+      background-color: #e0e7ff;
+      transform: scale(1.05);
+    }
+    
+    .custom-date-picker .calendar-day.selected {
+      background-color: #6366f1;
+      color: white;
+      transform: scale(1.1);
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+    }
+    
+    .custom-date-picker .calendar-day.today {
+      background-color: #e0e7ff;
+      color: #6366f1;
+      font-weight: 600;
+      border: 2px solid #6366f1;
+    }
+    
+    .custom-date-picker .calendar-day.other-month {
+      color: #d1d5db;
+    }
+    
+    .custom-date-picker .calendar-day .lunar-text {
+      font-size: 11px;
+      line-height: 1.2;
+      margin-top: 3px;
+      opacity: 0.85;
+      text-align: center;
+      font-weight: 500;
+    }
+    
+    .custom-date-picker .calendar-day.selected .lunar-text {
+      color: rgba(255, 255, 255, 0.9);
+    }
+    
+    .custom-date-picker .calendar-day.today .lunar-text {
+      color: #6366f1;
+    }
+    
+    /* 月份和年份选择器样式 */
+    .month-option, .year-option {
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+    
+    .month-option:hover, .year-option:hover {
+      background-color: #e0e7ff !important;
+      border-color: #6366f1;
+      color: #6366f1;
+    }
+    
+    .month-option.selected, .year-option.selected {
+      background-color: #6366f1 !important;
+      color: white;
+      border-color: #6366f1;
+    }
+    
     .lunar-toggle {
       display: inline-flex;
       align-items: center;
@@ -545,8 +783,12 @@ const adminPage = `
       .td-content-wrapper .notes-text {
         text-align: right;
       }
+     }
+    @media (max-width: 767px) {
+      #systemTimeDisplay {
+        display: none !important;
+      }
     }
-
     @media (min-width: 768px) {
       .table-container {
         overflow: visible;
@@ -576,6 +818,7 @@ const adminPage = `
         <div class="flex items-center">
           <i class="fas fa-calendar-check text-indigo-600 text-2xl mr-2"></i>
           <span class="font-bold text-xl text-gray-800">订阅管理系统</span>
+          <span id="systemTimeDisplay" class="ml-4 text-base text-indigo-600 font-normal"></span>
         </div>
         <div class="flex items-center space-x-4">
           <a href="/admin" class="text-indigo-600 border-b-2 border-indigo-600 px-3 py-2 rounded-md text-sm font-medium">
@@ -663,31 +906,113 @@ const adminPage = `
           
           <div>
             <label for="customType" class="block text-sm font-medium text-gray-700 mb-1">订阅类型</label>
-            <input type="text" id="customType" placeholder="例如：流媒体、云服务、软件等"
+            <input type="text" id="customType" placeholder="例如：流媒体、云服务、软件、生日等"
               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
             <div class="error-message text-red-500"></div>
           </div>
         </div>
         
-        <div class="mb-4">
+        <div class="mb-4 flex items-center space-x-6">
           <label class="lunar-toggle">
             <input type="checkbox" id="showLunar" class="form-checkbox h-4 w-4 text-indigo-600">
             <span class="text-gray-700">显示农历日期</span>
           </label>
+          <label class="lunar-toggle">
+            <input type="checkbox" id="useLunar" class="form-checkbox h-4 w-4 text-indigo-600">
+            <span class="text-gray-700">周期按农历</span>
+          </label>
         </div>
-		<!-- 新增修改，在表单添加"周期按农历"复选框，建议放在"显示农历日期"下方 -->
-		<div class="mb-4">
-		  <label class="lunar-toggle">
-			<input type="checkbox" id="useLunar" class="form-checkbox h-4 w-4 text-indigo-600">
-			<span class="text-gray-700">周期按农历</span>
-		  </label>
-		</div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div class="md:col-span-2">
             <label for="startDate" class="block text-sm font-medium text-gray-700 mb-1">开始日期</label>
-            <input type="date" id="startDate"
-              class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+            <div class="relative">
+              <input type="text" id="startDate" readonly
+                class="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer"
+                placeholder="点击选择日期">
+              <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <i class="fas fa-calendar text-gray-400"></i>
+              </div>
+                              <div id="startDatePicker" class="custom-date-picker hidden absolute top-full left-0 z-50 bg-white border border-gray-300 rounded-md shadow-lg p-6 min-w-[380px]">
+                  <div class="flex justify-between items-center mb-4">
+                    <button type="button" id="startDatePrevMonth" class="text-gray-600 hover:text-gray-800">
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="flex items-center space-x-2">
+                      <span id="startDateMonth" class="font-medium text-gray-900 cursor-pointer hover:text-indigo-600">1月</span>
+                      <span class="text-gray-400">|</span>
+                      <span id="startDateYear" class="font-medium text-gray-900 cursor-pointer hover:text-indigo-600">2024</span>
+                    </div>
+                    <button type="button" id="startDateNextMonth" class="text-gray-600 hover:text-gray-800">
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                  </div>
+                  
+                  <!-- 月份选择器 -->
+                  <div id="startDateMonthPicker" class="hidden mb-4">
+                    <div class="flex justify-between items-center mb-3">
+                      <span class="font-medium text-gray-900">选择月份</span>
+                      <button type="button" id="startDateBackToCalendar" class="text-gray-600 hover:text-gray-800">
+                        <i class="fas fa-times"></i>
+                      </button>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2">
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="0">1月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="1">2月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="2">3月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="3">4月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="4">5月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="5">6月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="6">7月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="7">8月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="8">9月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="9">10月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="10">11月</button>
+                      <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="11">12月</button>
+                    </div>
+                  </div>
+                  
+                  <!-- 年份选择器 -->
+                  <div id="startDateYearPicker" class="hidden mb-4">
+                    <div class="flex justify-between items-center mb-3">
+                      <span class="font-medium text-gray-900">选择年份</span>
+                      <button type="button" id="startDateBackToCalendarFromYear" class="text-gray-600 hover:text-gray-800">
+                        <i class="fas fa-times"></i>
+                      </button>
+                    </div>
+                    <div class="flex justify-between items-center mb-3">
+                      <button type="button"  id="startDatePrevYearDecade" class="text-gray-600 hover:text-gray-800">
+                        <i class="fas fa-chevron-left"></i>
+                      </button>
+                      <span id="startDateYearRange" class="font-medium text-gray-900">2020-2029</span>
+                      <button type="button"  id="startDateNextYearDecade" class="text-gray-600 hover:text-gray-800">
+                        <i class="fas fa-chevron-right"></i>
+                      </button>
+                    </div>
+                    <div id="startDateYearGrid" class="grid grid-cols-3 gap-2">
+                      <!-- 年份按钮将通过JavaScript动态生成 -->
+                    </div>
+                  </div>
+                  
+                  <div class="grid grid-cols-7 gap-2 mb-3">
+                    <div class="text-center text-sm font-semibold text-gray-600 py-2">日</div>
+                    <div class="text-center text-sm font-semibold text-gray-600 py-2">一</div>
+                    <div class="text-center text-sm font-semibold text-gray-600 py-2">二</div>
+                    <div class="text-center text-sm font-semibold text-gray-600 py-2">三</div>
+                    <div class="text-center text-sm font-semibold text-gray-600 py-2">四</div>
+                    <div class="text-center text-sm font-semibold text-gray-600 py-2">五</div>
+                    <div class="text-center text-sm font-semibold text-gray-600 py-2">六</div>
+                  </div>
+                  <div id="startDateCalendar" class="grid grid-cols-7 gap-2"></div>
+                  
+                  <!-- 回到今天按钮 -->
+                  <div class="mt-4 pt-3 border-t border-gray-200">
+                    <button type="button" id="startDateGoToToday" class="w-full px-3 py-2 text-sm text-indigo-600 hover:bg-indigo-50 rounded-md">
+                      <i class="fas fa-calendar-day mr-2"></i>回到今天
+                    </button>
+                  </div>
+                </div>
+            </div>
             <div id="startDateLunar" class="lunar-display"></div>
             <div class="error-message text-red-500"></div>
           </div>
@@ -714,17 +1039,101 @@ const adminPage = `
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label for="expiryDate" class="block text-sm font-medium text-gray-700 mb-1">到期日期 *</label>
-            <input type="date" id="expiryDate" required
-              class="readonly-input w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none">
+            <div class="relative">
+              <input type="text" id="expiryDate" readonly required
+                class="readonly-input w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none cursor-pointer"
+                placeholder="点击选择日期">
+              <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <i class="fas fa-calendar text-gray-400"></i>
+              </div>
+              <div id="expiryDatePicker" class="custom-date-picker hidden absolute top-full left-0 z-50 bg-white border border-gray-300 rounded-md shadow-lg p-6 min-w-[380px]">
+                <div class="flex justify-between items-center mb-4">
+                  <button type="button" id="expiryDatePrevMonth" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-chevron-left"></i>
+                  </button>
+                  <div class="flex items-center space-x-2">
+                    <span id="expiryDateMonth" class="font-medium text-gray-900 cursor-pointer hover:text-indigo-600">1月</span>
+                    <span class="text-gray-400">|</span>
+                    <span id="expiryDateYear" class="font-medium text-gray-900 cursor-pointer hover:text-indigo-600">2024</span>
+                  </div>
+                  <button type="button" id="expiryDateNextMonth" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-chevron-right"></i>
+                  </button>
+                </div>
+                
+                <!-- 月份选择器 -->
+                <div id="expiryDateMonthPicker" class="hidden mb-4">
+                  <div class="flex justify-between items-center mb-3">
+                    <span class="font-medium text-gray-900">选择月份</span>
+                    <button type="button" id="expiryDateBackToCalendar" class="text-gray-600 hover:text-gray-800">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
+                  <div class="grid grid-cols-3 gap-2">
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="0">1月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="1">2月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="2">3月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="3">4月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="4">5月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="5">6月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="6">7月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="7">8月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="8">9月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="9">10月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="10">11月</button>
+                    <button type="button" class="month-option px-3 py-2 text-sm rounded hover:bg-gray-100" data-month="11">12月</button>
+                  </div>
+                </div>
+                
+                <!-- 年份选择器 -->
+                <div id="expiryDateYearPicker" class="hidden mb-4">
+                  <div class="flex justify-between items-center mb-3">
+                    <span class="font-medium text-gray-900">选择年份</span>
+                    <button type="button" id="expiryDateBackToCalendarFromYear" class="text-gray-600 hover:text-gray-800">
+                      <i class="fas fa-times"></i>
+                    </button>
+                  </div>
+                  <div class="flex justify-between items-center mb-3">
+                    <button  type="button" id="expiryDatePrevYearDecade" class="text-gray-600 hover:text-gray-800">
+                      <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <span id="expiryDateYearRange" class="font-medium text-gray-900">2020-2029</span>
+                    <button  type="button"  id="expiryDateNextYearDecade" class="text-gray-600 hover:text-gray-800">
+                      <i class="fas fa-chevron-right"></i>
+                    </button>
+                  </div>
+                  <div id="expiryDateYearGrid" class="grid grid-cols-3 gap-2">
+                    <!-- 年份按钮将通过JavaScript动态生成 -->
+                  </div>
+                </div>
+                
+                <div class="grid grid-cols-7 gap-2 mb-3">
+                  <div class="text-center text-sm font-semibold text-gray-600 py-2">日</div>
+                  <div class="text-center text-sm font-semibold text-gray-600 py-2">一</div>
+                  <div class="text-center text-sm font-semibold text-gray-600 py-2">二</div>
+                  <div class="text-center text-sm font-semibold text-gray-600 py-2">三</div>
+                  <div class="text-center text-sm font-semibold text-gray-600 py-2">四</div>
+                  <div class="text-center text-sm font-semibold text-gray-600 py-2">五</div>
+                  <div class="text-center text-sm font-semibold text-gray-600 py-2">六</div>
+                </div>
+                <div id="expiryDateCalendar" class="grid grid-cols-7 gap-2"></div>
+                
+                <!-- 回到今天按钮 -->
+                <div class="mt-4 pt-3 border-t border-gray-200">
+                  <button type="button" id="expiryDateGoToToday" class="w-full px-3 py-2 text-sm text-indigo-600 hover:bg-indigo-50 rounded-md">
+                    <i class="fas fa-calendar-day mr-2"></i>回到今天
+                  </button>
+                </div>
+              </div>
+            </div>
             <div id="expiryDateLunar" class="lunar-display"></div>
             <div class="error-message text-red-500"></div>
-          </div>
-          
-          <div class="flex items-end">
-            <button type="button" id="calculateExpiryBtn" 
-              class="btn-primary text-white px-4 py-2 rounded-md text-sm font-medium h-10">
-              <i class="fas fa-calculator mr-2"></i>自动计算到期日期
-            </button>
+            <div class="flex justify-end mt-2">
+              <button type="button" id="calculateExpiryBtn" 
+                class="btn-primary text-white px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap">
+                <i class="fas fa-calculator mr-2"></i>自动计算到期日期
+              </button>
+            </div>
           </div>
         </div>
         
@@ -776,30 +1185,38 @@ const adminPage = `
   </div>
 
   <script>
-    // 时区工具函数 - 前端版本
+    // 兼容性函数 - 保持原有接口
     function formatBeijingTime(date = new Date(), format = 'full') {
-      if (format === 'date') {
-        return date.toLocaleDateString('zh-CN', {
-          timeZone: 'Asia/Shanghai',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit'
-        });
-      } else if (format === 'datetime') {
-        return date.toLocaleString('zh-CN', {
-          timeZone: 'Asia/Shanghai',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        });
-      } else {
-        // full format
-        return date.toLocaleString('zh-CN', {
-          timeZone: 'Asia/Shanghai'
-        });
+      try {
+        const timezone = 'Asia/Shanghai';
+        const dateObj = new Date(date);
+        
+        if (format === 'date') {
+          return dateObj.toLocaleDateString('zh-CN', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          });
+        } else if (format === 'datetime') {
+          return dateObj.toLocaleString('zh-CN', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          });
+        } else {
+          // full format
+          return dateObj.toLocaleString('zh-CN', {
+            timeZone: timezone
+          });
+        }
+      } catch (error) {
+        console.error('时间格式化错误: ' + error.message);
+        return new Date(date).toISOString();
       }
     }
 
@@ -869,7 +1286,9 @@ const adminPage = `
 
         const baseDate = new Date(1900, 0, 31);
         const objDate = new Date(year, month - 1, day);
-        let offset = Math.floor((objDate - baseDate) / 86400000);
+        //let offset = Math.floor((objDate - baseDate) / 86400000);
+        let offset = Math.round((objDate - baseDate) / 86400000);
+
 
         let temp = 0;
         let lunarYear = 1900;
@@ -1001,6 +1420,25 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
   return { year, month, day, isLeap };
 }
 
+// 前端版本的 lunarBiz 对象
+const lunarBiz = {
+  // 农历加周期，返回新的农历日期对象
+  addLunarPeriod(lunar, periodValue, periodUnit) {
+    return addLunarPeriod(lunar, periodValue, periodUnit);
+  },
+  // 农历转公历（遍历法，适用1900-2100年）
+  lunar2solar(lunar) {
+    return lunar2solar(lunar);
+  },
+  // 距离农历日期还有多少天
+  daysToLunar(lunar) {
+    const solar = lunarBiz.lunar2solar(lunar);
+    const date = new Date(solar.year, solar.month - 1, solar.day);
+    const now = new Date();
+    return Math.ceil((date - now) / (1000 * 60 * 60 * 24));
+  }
+};
+
 
 
     // 农历显示相关函数
@@ -1009,7 +1447,11 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
       const lunarDisplay = document.getElementById(lunarDisplayId);
       const showLunar = document.getElementById('showLunar');
 
-      if (!dateInput.value || !showLunar.checked) {
+      if (!dateInput || !lunarDisplay) {
+        return;
+      }
+
+      if (!dateInput.value || !showLunar || !showLunar.checked) {
         lunarDisplay.classList.remove('show');
         return;
       }
@@ -1027,6 +1469,10 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
 
     function toggleLunarDisplay() {
       const showLunar = document.getElementById('showLunar');
+      if (!showLunar) {
+        return;
+      }
+      
       updateLunarDisplay('startDate', 'startDateLunar');
       updateLunarDisplay('expiryDate', 'expiryDateLunar');
 
@@ -1036,6 +1482,10 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
 
     function loadLunarPreference() {
       const showLunar = document.getElementById('showLunar');
+      if (!showLunar) {
+        return;
+      }
+      
       const saved = localStorage.getItem('showLunar');
       if (saved !== null) {
         showLunar.checked = saved === 'true';
@@ -1148,10 +1598,12 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
         // 加载农历显示偏好
         const listShowLunar = document.getElementById('listShowLunar');
         const saved = localStorage.getItem('showLunar');
-        if (saved !== null) {
-          listShowLunar.checked = saved === 'true';
-        } else {
-          listShowLunar.checked = true; // 默认显示
+        if (listShowLunar) {
+          if (saved !== null) {
+            listShowLunar.checked = saved === 'true';
+          } else {
+            listShowLunar.checked = true; // 默认显示
+          }
         }
 
         const tbody = document.getElementById('subscriptionsBody');
@@ -1184,8 +1636,31 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
 		  }
 		  
           const expiryDate = new Date(subscription.expiryDate);
-          const now = new Date();
-          const daysDiff = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+          // 使用配置的时区计算天数差，确保时区变化时天数计算正确
+          const currentTime = new Date();
+          
+          // 获取当前时间在配置时区的日期部分（午夜时间）
+          const currentDtf = new Intl.DateTimeFormat('en-US', {
+            timeZone: globalTimezone,
+            hour12: false,
+            year: 'numeric', month: '2-digit', day: '2-digit'
+          });
+          const currentParts = currentDtf.formatToParts(currentTime);
+          const getCurrent = type => Number(currentParts.find(x => x.type === type).value);
+          const currentDateInTimezone = Date.UTC(getCurrent('year'), getCurrent('month') - 1, getCurrent('day'), 0, 0, 0);
+          
+          // 获取到期时间在配置时区的日期部分（午夜时间）
+          const expiryDtf = new Intl.DateTimeFormat('en-US', {
+            timeZone: globalTimezone,
+            hour12: false,
+            year: 'numeric', month: '2-digit', day: '2-digit'
+          });
+          const expiryParts = expiryDtf.formatToParts(expiryDate);
+          const getExpiry = type => Number(expiryParts.find(x => x.type === type).value);
+          const expiryDateInTimezone = Date.UTC(getExpiry('year'), getExpiry('month') - 1, getExpiry('day'), 0, 0, 0);
+          
+          // 计算天数差（基于时区日期的午夜时间）
+          const daysDiff = Math.round((expiryDateInTimezone - currentDateInTimezone) / (1000 * 60 * 60 * 24));
           
           let statusHtml = '';
           if (!subscription.isActive) {
@@ -1209,7 +1684,7 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
             '<i class="fas fa-ban text-gray-400 ml-1" title="不自动续订"></i>';
           
           // 检查是否显示农历
-          const showLunar = document.getElementById('listShowLunar').checked;
+          const showLunar = listShowLunar ? listShowLunar.checked : false;
           let lunarExpiryText = '';
           let startLunarText = '';
 
@@ -1248,12 +1723,21 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
 		  const typeHtml = createHoverText((subscription.customType || '其他'), 15, 'text-sm text-gray-900');
 		  const periodHtml = periodText ? createHoverText('周期: ' + periodText, 20, 'text-xs text-gray-500 mt-1') : '';
 
-          // 到期时间相关信息
-          const expiryDateText = formatBeijingTime(new Date(subscription.expiryDate), 'date');
+          // 到期时间相关信息 - 使用全局时区
+          function formatDateInTimezone(date, timezone) {
+            return date.toLocaleDateString('zh-CN', { 
+              timeZone: timezone, 
+              year: 'numeric', 
+              month: '2-digit', 
+              day: '2-digit' 
+            });
+          }
+          
+          const expiryDateText = formatDateInTimezone(new Date(subscription.expiryDate), globalTimezone);
           const lunarHtml = lunarExpiryText ? createHoverText('农历: ' + lunarExpiryText, 25, 'text-xs text-blue-600 mt-1') : '';
           const daysLeftText = daysDiff < 0 ? '已过期' + Math.abs(daysDiff) + '天' : '还剩' + daysDiff + '天';
           const startDateText = subscription.startDate ?
-            '开始: ' + formatBeijingTime(new Date(subscription.startDate), 'date') + (startLunarText ? ' (' + startLunarText + ')' : '') : '';
+            '开始: ' + formatDateInTimezone(new Date(subscription.startDate), globalTimezone) + (startLunarText ? ' (' + startLunarText + ')' : '') : '';
           const startDateHtml = startDateText ? createHoverText(startDateText, 30, 'text-xs text-gray-500 mt-1') : '';
 
 		  //新增修改，修改日历类型
@@ -1397,8 +1881,10 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
         addHoverListeners();
 
         // 添加农历开关事件监听
-        listShowLunar.removeEventListener('change', handleListLunarToggle);
-        listShowLunar.addEventListener('change', handleListLunarToggle);
+        if (listShowLunar) {
+          listShowLunar.removeEventListener('change', handleListLunarToggle);
+          listShowLunar.addEventListener('change', handleListLunarToggle);
+        }
       } catch (error) {
         console.error('加载订阅失败:', error);
         const tbody = document.getElementById('subscriptionsBody');
@@ -1473,7 +1959,7 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
       document.getElementById('subscriptionId').value = '';
       clearFieldErrors();
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toISOString().split('T')[0]; // 前端使用本地时间
       document.getElementById('startDate').value = today;
       document.getElementById('reminderDays').value = '7';
       document.getElementById('isActive').checked = true;
@@ -1483,34 +1969,521 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
       calculateExpiryDate();
       setupModalEventListeners();
     });
+
+    // 自定义日期选择器功能
+    class CustomDatePicker {
+      constructor(inputId, pickerId, calendarId, monthId, yearId, prevBtnId, nextBtnId) {
+        console.log('CustomDatePicker 构造函数:', { inputId, pickerId, calendarId, monthId, yearId, prevBtnId, nextBtnId });
+        
+        this.input = document.getElementById(inputId);
+        this.picker = document.getElementById(pickerId);
+        this.calendar = document.getElementById(calendarId);
+        this.monthElement = document.getElementById(monthId);
+        this.yearElement = document.getElementById(yearId);
+        this.prevBtn = document.getElementById(prevBtnId);
+        this.nextBtn = document.getElementById(nextBtnId);
+        
+        // 新增元素
+        this.monthPicker = document.getElementById(pickerId.replace('Picker', 'MonthPicker'));
+        this.yearPicker = document.getElementById(pickerId.replace('Picker', 'YearPicker'));
+        this.backToCalendarBtn = document.getElementById(pickerId.replace('Picker', 'BackToCalendar'));
+        this.backToCalendarFromYearBtn = document.getElementById(pickerId.replace('Picker', 'BackToCalendarFromYear'));
+        this.goToTodayBtn = document.getElementById(pickerId.replace('Picker', 'GoToToday'));
+        this.prevYearDecadeBtn = document.getElementById(pickerId.replace('Picker', 'PrevYearDecade'));
+        this.nextYearDecadeBtn = document.getElementById(pickerId.replace('Picker', 'NextYearDecade'));
+        this.yearRangeElement = document.getElementById(pickerId.replace('Picker', 'YearRange'));
+        this.yearGrid = document.getElementById(pickerId.replace('Picker', 'YearGrid'));
+        
+        console.log('找到的元素:', {
+          input: !!this.input,
+          picker: !!this.picker,
+          calendar: !!this.calendar,
+          monthElement: !!this.monthElement,
+          yearElement: !!this.yearElement,
+          prevBtn: !!this.prevBtn,
+          nextBtn: !!this.nextBtn
+        });
+        
+        this.currentDate = new Date();
+        this.selectedDate = null;
+        this.currentView = 'calendar'; // 'calendar', 'month', 'year'
+        this.yearDecade = Math.floor(this.currentDate.getFullYear() / 10) * 10;
+        
+        this.init();
+      }
+      
+      init() {
+        console.log('初始化日期选择器，输入框:', !!this.input, '选择器:', !!this.picker);
+        
+        // 绑定基本事件
+        if (this.input) {
+          // 移除之前的事件监听器（如果存在）
+          this.input.removeEventListener('click', this._forceShowHandler);
+          this._forceShowHandler = () => this.forceShow();
+          this.input.addEventListener('click', this._forceShowHandler);
+        }
+        
+        if (this.prevBtn) {
+          this.prevBtn.removeEventListener('click', this._prevHandler);
+          this._prevHandler = () => this.previousMonth();
+          this.prevBtn.addEventListener('click', this._prevHandler);
+        }
+        
+        if (this.nextBtn) {
+          this.nextBtn.removeEventListener('click', this._nextHandler);
+          this._nextHandler = () => this.nextMonth();
+          this.nextBtn.addEventListener('click', this._nextHandler);
+        }
+        
+        // 绑定月份和年份点击事件
+        if (this.monthElement) {
+          this.monthElement.removeEventListener('click', this._showMonthHandler);
+          this._showMonthHandler = () => this.showMonthPicker();
+          this.monthElement.addEventListener('click', this._showMonthHandler);
+        }
+        
+        if (this.yearElement) {
+          this.yearElement.removeEventListener('click', this._showYearHandler);
+          this._showYearHandler = () => this.showYearPicker();
+          this.yearElement.addEventListener('click', this._showYearHandler);
+        }
+        
+        // 绑定月份选择器事件
+        if (this.monthPicker) {
+          this.monthPicker.removeEventListener('click', this._monthSelectHandler);
+          this._monthSelectHandler = (e) => {
+            if (e.target.classList.contains('month-option')) {
+              const month = parseInt(e.target.dataset.month);
+              this.selectMonth(month);
+            }
+          };
+          this.monthPicker.addEventListener('click', this._monthSelectHandler);
+        }
+        
+        if (this.backToCalendarBtn) {
+          this.backToCalendarBtn.removeEventListener('click', this._backToCalendarHandler);
+          this._backToCalendarHandler = () => this.showCalendar();
+          this.backToCalendarBtn.addEventListener('click', this._backToCalendarHandler);
+        }
+        
+        if (this.backToCalendarFromYearBtn) {
+          this.backToCalendarFromYearBtn.removeEventListener('click', this._backToCalendarFromYearHandler);
+          this._backToCalendarFromYearHandler = () => this.showCalendar();
+          this.backToCalendarFromYearBtn.addEventListener('click', this._backToCalendarFromYearHandler);
+        }
+        
+        // 绑定年份选择器事件
+        if (this.prevYearDecadeBtn) {
+        this.prevYearDecadeBtn.removeEventListener('click', this._prevYearDecadeHandler);
+        this._prevYearDecadeHandler = (e) => {
+            e.stopPropagation(); // 防止事件冒泡到表单
+            this.previousYearDecade();
+        };
+        this.prevYearDecadeBtn.addEventListener('click', this._prevYearDecadeHandler);
+        }
+
+        if (this.nextYearDecadeBtn) {
+        this.nextYearDecadeBtn.removeEventListener('click', this._nextYearDecadeHandler);
+        this._nextYearDecadeHandler = (e) => {
+            e.stopPropagation(); // 防止事件冒泡到表单
+            this.nextYearDecade();
+        };
+        this.nextYearDecadeBtn.addEventListener('click', this._nextYearDecadeHandler);
+}
+        
+        // 绑定回到今天事件
+        if (this.goToTodayBtn) {
+          this.goToTodayBtn.removeEventListener('click', this._goToTodayHandler);
+          this._goToTodayHandler = () => this.goToToday();
+          this.goToTodayBtn.addEventListener('click', this._goToTodayHandler);
+        }
+        
+        // 点击外部关闭
+        if (this._outsideClickHandler) {
+          document.removeEventListener('click', this._outsideClickHandler);
+        }
+        this._outsideClickHandler = (e) => {
+          if (this.picker && !this.picker.contains(e.target) && !this.input.contains(e.target)) {
+            console.log('点击外部，隐藏日期选择器');
+            this.hide();
+          }
+        };
+        document.addEventListener('click', this._outsideClickHandler);
+        
+        // 初始化显示
+        this.render();
+        this.renderYearGrid();
+      }
+      
+      toggle() {
+        console.log('toggle 被调用');
+        console.log('picker 元素:', this.picker);
+        console.log('picker 类名:', this.picker ? this.picker.className : 'null');
+        console.log('是否包含 hidden:', this.picker ? this.picker.classList.contains('hidden') : 'null');
+        
+        if (this.picker && this.picker.classList.contains('hidden')) {
+          console.log('显示日期选择器');
+          this.show();
+        } else {
+          console.log('隐藏日期选择器');
+          this.hide();
+        }
+      }
+      
+      // 强制显示日期选择器
+      forceShow() {
+        console.log('forceShow 被调用');
+        if (this.picker) {
+          // 确保选择器显示
+          this.picker.classList.remove('hidden');
+          // 重置到日历视图
+          this.currentView = 'calendar';
+          this.hideAllViews();
+          this.render();
+          console.log('日期选择器已显示');
+        } else {
+          console.error('日期选择器元素不存在');
+        }
+      }
+      
+      show() {
+        if (this.picker) {
+          this.picker.classList.remove('hidden');
+          this.render();
+        }
+      }
+      
+      hide() {
+        if (this.picker) {
+          this.picker.classList.add('hidden');
+        }
+      }
+      
+      previousMonth() {
+        this.currentDate.setMonth(this.currentDate.getMonth() - 1);
+        this.render();
+      }
+      
+      nextMonth() {
+        this.currentDate.setMonth(this.currentDate.getMonth() + 1);
+        this.render();
+      }
+      
+      selectDate(date) {
+        this.selectedDate = date;
+        if (this.input) {
+          // 使用本地时间格式化，避免时区问题
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          this.input.value = year + '-' + month + '-' + day;
+        }
+        this.hide();
+        
+        // 触发change事件，但不冒泡到表单
+        if (this.input) {
+          const event = new Event('change', { bubbles: false });
+          this.input.dispatchEvent(event);
+        }
+      }
+      
+      render() {
+        if (!this.monthElement || !this.yearElement || !this.calendar) return;
+        
+        const year = this.currentDate.getFullYear();
+        const month = this.currentDate.getMonth();
+        
+        // 更新月份年份显示
+        this.monthElement.textContent = (month + 1) + '月';
+        this.yearElement.textContent = year;
+        
+        // 清空日历
+        this.calendar.innerHTML = '';
+        
+        // 获取当月第一天和最后一天
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startDate = new Date(firstDay);
+        startDate.setDate(startDate.getDate() - firstDay.getDay());
+        
+        // 生成日历网格
+        for (let i = 0; i < 42; i++) {
+          const date = new Date(startDate);
+          date.setDate(startDate.getDate() + i);
+          
+          const dayElement = document.createElement('div');
+          dayElement.className = 'calendar-day';
+          
+          // 判断是否是当前月份
+          if (date.getMonth() !== month) {
+            dayElement.classList.add('other-month');
+          }
+          
+          // 判断是否是今天
+          const today = new Date();
+          if (date.toDateString() === today.toDateString()) {
+            dayElement.classList.add('today');
+          }
+          
+          // 判断是否是选中日期
+          if (this.selectedDate && date.toDateString() === this.selectedDate.toDateString()) {
+            dayElement.classList.add('selected');
+          }
+          
+          // 获取农历信息
+          let lunarText = '';
+          try {
+            const lunar = lunarCalendar.solar2lunar(date.getFullYear(), date.getMonth() + 1, date.getDate());
+            if (lunar) {
+              if (lunar.day === 1) {
+                // 初一，只显示月份
+                lunarText = lunar.isLeap ? '闰' + lunar.monthStr.replace('闰', '') : lunar.monthStr;
+              } else {
+                // 不是初一，显示日
+                lunarText = lunar.dayStr;
+              }
+            }
+          } catch (error) {
+            console.error('农历转换错误:', error);
+          }
+          
+          dayElement.innerHTML =
+            '<div>' + date.getDate() + '</div>' +
+            '<div class="lunar-text">' + lunarText + '</div>';
+          
+          dayElement.addEventListener('click', () => this.selectDate(date));
+          
+          this.calendar.appendChild(dayElement);
+        }
+      }
+      
+      // 显示月份选择器
+      showMonthPicker() {
+        this.currentView = 'month';
+        this.hideAllViews();
+        if (this.monthPicker) {
+          this.monthPicker.classList.remove('hidden');
+          // 高亮当前月份
+          const monthOptions = this.monthPicker.querySelectorAll('.month-option');
+          monthOptions.forEach((option, index) => {
+            option.classList.remove('selected');
+            if (index === this.currentDate.getMonth()) {
+              option.classList.add('selected');
+            }
+          });
+        }
+      }
+      
+      // 显示年份选择器
+      showYearPicker() {
+        this.currentView = 'year';
+        this.hideAllViews();
+        if (this.yearPicker) {
+          this.yearPicker.classList.remove('hidden');
+        }
+        this.renderYearGrid();
+      }
+      
+      // 显示日历视图
+      showCalendar() {
+        this.currentView = 'calendar';
+        this.hideAllViews();
+        this.render();
+      }
+      
+      // 隐藏所有视图
+      hideAllViews() {
+        if (this.monthPicker) this.monthPicker.classList.add('hidden');
+        if (this.yearPicker) this.yearPicker.classList.add('hidden');
+        // 注意：不隐藏日历视图，因为它是主视图
+      }
+      
+      // 选择月份
+      selectMonth(month) {
+        this.currentDate.setMonth(month);
+        this.showCalendar();
+      }
+      
+      // 选择年份
+      selectYear(year) {
+        this.currentDate.setFullYear(year);
+        this.showCalendar();
+      }
+      
+      // 上一十年
+      previousYearDecade() {
+        this.yearDecade -= 10;
+        this.renderYearGrid();
+      }
+      
+      // 下一十年
+      nextYearDecade() {
+        this.yearDecade += 10;
+        this.renderYearGrid();
+      }
+      
+      // 渲染年份网格
+      renderYearGrid() {
+        if (!this.yearGrid || !this.yearRangeElement) return;
+        
+        const startYear = this.yearDecade;
+        const endYear = this.yearDecade + 9;
+        
+        // 更新年份范围显示
+        this.yearRangeElement.textContent = startYear + '-' + endYear;
+        
+        // 清空年份网格
+        this.yearGrid.innerHTML = '';
+        
+        // 生成年份按钮
+        for (let year = startYear; year <= endYear; year++) {
+          const yearBtn = document.createElement('button');
+          yearBtn.type = 'button';
+          yearBtn.className = 'year-option px-3 py-2 text-sm rounded hover:bg-gray-100';
+          yearBtn.textContent = year;
+          yearBtn.dataset.year = year;
+          
+          // 高亮当前年份
+          if (year === this.currentDate.getFullYear()) {
+            yearBtn.classList.add('bg-indigo-100', 'text-indigo-600');
+          }
+          
+          // 限制年份范围 1900-2100
+          if (year < 1900 || year > 2100) {
+            yearBtn.disabled = true;
+            yearBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          } else {
+            yearBtn.addEventListener('click', () => this.selectYear(year));
+          }
+          
+          this.yearGrid.appendChild(yearBtn);
+        }
+      }
+      
+      // 回到今天
+      goToToday() {
+        this.currentDate = new Date();
+        this.yearDecade = Math.floor(this.currentDate.getFullYear() / 10) * 10;
+        this.showCalendar();
+      }
+      
+      destroy() {
+        this.hide();
+        
+        // 清理事件监听器
+        if (this.input && this._forceShowHandler) {
+          this.input.removeEventListener('click', this._forceShowHandler);
+        }
+        if (this.prevBtn && this._prevHandler) {
+          this.prevBtn.removeEventListener('click', this._prevHandler);
+        }
+        if (this.nextBtn && this._nextHandler) {
+          this.nextBtn.removeEventListener('click', this._nextHandler);
+        }
+        if (this.monthElement && this._showMonthHandler) {
+          this.monthElement.removeEventListener('click', this._showMonthHandler);
+        }
+        if (this.yearElement && this._showYearHandler) {
+          this.yearElement.removeEventListener('click', this._showYearHandler);
+        }
+        if (this.monthPicker && this._monthSelectHandler) {
+          this.monthPicker.removeEventListener('click', this._monthSelectHandler);
+        }
+        if (this.backToCalendarBtn && this._backToCalendarHandler) {
+          this.backToCalendarBtn.removeEventListener('click', this._backToCalendarHandler);
+        }
+        if (this.backToCalendarFromYearBtn && this._backToCalendarFromYearHandler) {
+          this.backToCalendarFromYearBtn.removeEventListener('click', this._backToCalendarFromYearHandler);
+        }
+        if (this.prevYearDecadeBtn && this._prevYearDecadeHandler) {
+          this.prevYearDecadeBtn.removeEventListener('click', this._prevYearDecadeHandler);
+        }
+        if (this.nextYearDecadeBtn && this._nextYearDecadeHandler) {
+          this.nextYearDecadeBtn.removeEventListener('click', this._nextYearDecadeHandler);
+        }
+        if (this.goToTodayBtn && this._goToTodayHandler) {
+          this.goToTodayBtn.removeEventListener('click', this._goToTodayHandler);
+        }
+        if (this._outsideClickHandler) {
+          document.removeEventListener('click', this._outsideClickHandler);
+        }
+      }
+    }
     
     function setupModalEventListeners() {
-      document.getElementById('calculateExpiryBtn').removeEventListener('click', calculateExpiryDate);
-      document.getElementById('calculateExpiryBtn').addEventListener('click', calculateExpiryDate);
-	  document.getElementById('useLunar').removeEventListener('change', calculateExpiryDate);//新增修改，
-	  document.getElementById('useLunar').addEventListener('change', calculateExpiryDate);//新增修改，
-
+      // 获取DOM元素
+      const calculateExpiryBtn = document.getElementById('calculateExpiryBtn');
+      const useLunar = document.getElementById('useLunar');
+      const showLunar = document.getElementById('showLunar');
+      const startDate = document.getElementById('startDate');
+      const expiryDate = document.getElementById('expiryDate');
+      const cancelBtn = document.getElementById('cancelBtn');
+      
+      // 直接绑定事件监听器（简化处理，避免重复移除的问题）
+      if (calculateExpiryBtn) {
+        calculateExpiryBtn.addEventListener('click', calculateExpiryDate);
+      }
+      if (useLunar) {
+        useLunar.addEventListener('change', calculateExpiryDate);
+      }
+      if (showLunar) {
+        showLunar.addEventListener('change', toggleLunarDisplay);
+      }
+      if (startDate) {
+        startDate.addEventListener('change', () => updateLunarDisplay('startDate', 'startDateLunar'));
+      }
+      if (expiryDate) {
+        expiryDate.addEventListener('change', () => updateLunarDisplay('expiryDate', 'expiryDateLunar'));
+      }
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+          document.getElementById('subscriptionModal').classList.add('hidden');
+        });
+      }
+      // 为周期相关字段添加事件监听
       ['startDate', 'periodValue', 'periodUnit'].forEach(id => {
         const element = document.getElementById(id);
-        element.removeEventListener('change', calculateExpiryDate);
-        element.addEventListener('change', calculateExpiryDate);
-		document.getElementById('useLunar').removeEventListener('change', calculateExpiryDate);//新增修改，
-	    document.getElementById('useLunar').addEventListener('change', calculateExpiryDate);//新增修改，
+        if (element) {
+          element.addEventListener('change', calculateExpiryDate);
+        }
       });
 
-      // 添加农历显示事件监听
-      document.getElementById('showLunar').removeEventListener('change', toggleLunarDisplay);
-      document.getElementById('showLunar').addEventListener('change', toggleLunarDisplay);
-
-      document.getElementById('startDate').removeEventListener('change', () => updateLunarDisplay('startDate', 'startDateLunar'));
-      document.getElementById('startDate').addEventListener('change', () => updateLunarDisplay('startDate', 'startDateLunar'));
-
-      document.getElementById('expiryDate').removeEventListener('change', () => updateLunarDisplay('expiryDate', 'expiryDateLunar'));
-      document.getElementById('expiryDate').addEventListener('change', () => updateLunarDisplay('expiryDate', 'expiryDateLunar'));
-
-      document.getElementById('cancelBtn').addEventListener('click', () => {
-        document.getElementById('subscriptionModal').classList.add('hidden');
-      });
+      // 初始化自定义日期选择器
+      try {
+        // 安全地清理之前的实例
+        if (window.startDatePicker && typeof window.startDatePicker.destroy === 'function') {
+          window.startDatePicker.destroy();
+        }
+        if (window.expiryDatePicker && typeof window.expiryDatePicker.destroy === 'function') {
+          window.expiryDatePicker.destroy();
+        }
+        
+        // 清理全局变量
+        window.startDatePicker = null;
+        window.expiryDatePicker = null;
+        
+        // 确保DOM元素存在后再创建选择器
+        setTimeout(() => {
+          console.log('创建开始日期选择器...');
+          window.startDatePicker = new CustomDatePicker(
+            'startDate', 'startDatePicker', 'startDateCalendar', 
+            'startDateMonth', 'startDateYear', 'startDatePrevMonth', 'startDateNextMonth'
+          );
+          
+          console.log('创建到期日期选择器...');
+          window.expiryDatePicker = new CustomDatePicker(
+            'expiryDate', 'expiryDatePicker', 'expiryDateCalendar', 
+            'expiryDateMonth', 'expiryDateYear', 'expiryDatePrevMonth', 'expiryDateNextMonth'
+          );
+          
+          console.log('日期选择器初始化完成');
+        }, 50);
+      } catch (error) {
+        console.error('初始化日期选择器失败:', error);
+        // 确保清理失败的实例
+        window.startDatePicker = null;
+        window.expiryDatePicker = null;
+      }
     }
 
 	// 3. 新增修改， calculateExpiryDate 函数，支持农历周期推算     
@@ -1530,13 +2503,12 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
 		const lunar = lunarCalendar.solar2lunar(start.getFullYear(), start.getMonth() + 1, start.getDate());
 		let nextLunar = addLunarPeriod(lunar, periodValue, periodUnit);
 		const solar = lunar2solar(nextLunar);
-		//const expiry = new Date(solar.year, solar.month - 1, solar.day);
 		
-		  // 使用与公历相同的方式创建日期  
-  const expiry = new Date(startDate); // 从原始日期开始  
-  expiry.setFullYear(solar.year);  
-  expiry.setMonth(solar.month - 1);  
-  expiry.setDate(solar.day);  
+		// 使用与公历相同的方式创建日期  
+		const expiry = new Date(startDate); // 从原始日期开始  
+		expiry.setFullYear(solar.year);  
+		expiry.setMonth(solar.month - 1);  
+		expiry.setDate(solar.day);  
 		document.getElementById('expiryDate').value = expiry.toISOString().split('T')[0];
 		console.log('start:', start);
 		console.log('nextLunar:', nextLunar);
@@ -1546,7 +2518,7 @@ function addLunarPeriod(lunar, periodValue, periodUnit) {
 		console.log('solar from lunar2solar:', solar);  
 		console.log('solar.year:', solar.year, 'solar.month:', solar.month, 'solar.day:', solar.day);
 		console.log('expiry.getTime():', expiry.getTime());  
-console.log('expiry.toString():', expiry.toString());
+		console.log('expiry.toString():', expiry.toString());
 		
 		
 	  } else {
@@ -1584,7 +2556,7 @@ console.log('expiry.toString():', expiry.toString());
     
 	
 	// 4. 新增修改，监听 useLunar 复选框变化时也自动重新计算
-	document.getElementById('useLunar').addEventListener('change', calculateExpiryDate);   
+	// 注意：这个事件监听器已经在 setupModalEventListeners 中处理了   
    // 新增修改，表单提交时带上 useLunar 字段
     document.getElementById('subscriptionForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -1641,7 +2613,7 @@ console.log('expiry.toString():', expiry.toString());
       }
     });
     
-	// 新增修改，编辑订阅时回显 useLunar 字段
+	    // 新增修改，编辑订阅时回显 useLunar 字段
     async function editSubscription(e) {
       const id = e.target.dataset.id || e.target.parentElement.dataset.id;
       
@@ -1667,6 +2639,8 @@ console.log('expiry.toString():', expiry.toString());
           clearFieldErrors();
           loadLunarPreference();
           document.getElementById('subscriptionModal').classList.remove('hidden');
+          
+          // 重要：编辑订阅时也需要重新设置事件监听器
           setupModalEventListeners();
 
           // 更新农历显示
@@ -1715,7 +2689,132 @@ console.log('expiry.toString():', expiry.toString());
       }
     }
     
-    window.addEventListener('load', loadSubscriptions);
+    // 全局时区配置
+    let globalTimezone = 'UTC';
+    
+    // 检测时区更新
+    function checkTimezoneUpdate() {
+      const lastUpdate = localStorage.getItem('timezoneUpdated');
+      if (lastUpdate) {
+        const updateTime = parseInt(lastUpdate);
+        const currentTime = Date.now();
+        // 如果时区更新发生在最近5秒内，则刷新页面
+        if (currentTime - updateTime < 5000) {
+          localStorage.removeItem('timezoneUpdated');
+          window.location.reload();
+        }
+      }
+    }
+    
+    // 页面加载时检查时区更新
+    window.addEventListener('load', () => {
+      checkTimezoneUpdate();
+      loadSubscriptions();
+    });
+    
+    // 定期检查时区更新（每2秒检查一次）
+    setInterval(checkTimezoneUpdate, 2000);
+
+    // 实时显示系统时间和时区
+    async function showSystemTime() {
+      try {
+        // 获取后台配置的时区
+        const response = await fetch('/api/config');
+        const config = await response.json();
+        globalTimezone = config.TIMEZONE || 'UTC';
+        
+        // 格式化当前时间
+        function formatTime(dt, tz) {
+          return dt.toLocaleString('zh-CN', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        function formatTimezoneDisplay(tz) {
+          try {
+            // 使用更准确的时区偏移计算方法
+            const now = new Date();
+            const dtf = new Intl.DateTimeFormat('en-US', {
+              timeZone: tz,
+              hour12: false,
+              year: 'numeric', month: '2-digit', day: '2-digit',
+              hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+            const parts = dtf.formatToParts(now);
+            const get = type => Number(parts.find(x => x.type === type).value);
+            const target = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+            const utc = now.getTime();
+            const offset = Math.round((target - utc) / (1000 * 60 * 60));
+            
+            // 时区中文名称映射
+            const timezoneNames = {
+              'UTC': '世界标准时间',
+              'Asia/Shanghai': '中国标准时间',
+              'Asia/Hong_Kong': '香港时间',
+              'Asia/Taipei': '台北时间',
+              'Asia/Singapore': '新加坡时间',
+              'Asia/Tokyo': '日本时间',
+              'Asia/Seoul': '韩国时间',
+              'America/New_York': '美国东部时间',
+              'America/Los_Angeles': '美国太平洋时间',
+              'America/Chicago': '美国中部时间',
+              'America/Denver': '美国山地时间',
+              'Europe/London': '英国时间',
+              'Europe/Paris': '巴黎时间',
+              'Europe/Berlin': '柏林时间',
+              'Europe/Moscow': '莫斯科时间',
+              'Australia/Sydney': '悉尼时间',
+              'Australia/Melbourne': '墨尔本时间',
+              'Pacific/Auckland': '奥克兰时间'
+            };
+            
+            const offsetStr = offset >= 0 ? '+' + offset : offset;
+            const timezoneName = timezoneNames[tz] || tz;
+            return timezoneName + ' (UTC' + offsetStr + ')';
+          } catch (error) {
+            console.error('格式化时区显示失败:', error);
+            return tz;
+          }
+        }
+        function update() {
+          const now = new Date();
+          const timeStr = formatTime(now, globalTimezone);
+          const tzStr = formatTimezoneDisplay(globalTimezone);
+          const el = document.getElementById('systemTimeDisplay');
+          if (el) {
+            el.textContent = timeStr + '  ' + tzStr;
+          }
+        }
+        update();
+        // 每秒刷新
+        setInterval(update, 1000);
+        
+        // 定期检查时区变化并重新加载订阅列表（每30秒检查一次）
+        setInterval(async () => {
+          try {
+            const response = await fetch('/api/config');
+            const config = await response.json();
+            const newTimezone = config.TIMEZONE || 'UTC';
+            
+            if (globalTimezone !== newTimezone) {
+              globalTimezone = newTimezone;
+              console.log('时区已更新为:', globalTimezone);
+              // 重新加载订阅列表以更新天数计算
+              loadSubscriptions();
+            }
+          } catch (error) {
+            console.error('检查时区更新失败:', error);
+          }
+        }, 30000);
+        
+        // 初始加载订阅列表
+        loadSubscriptions();
+      } catch (e) {
+        // 出错时显示本地时间
+        const el = document.getElementById('systemTimeDisplay');
+        if (el) {
+          el.textContent = new Date().toLocaleString();
+        }
+      }
+    }
+    showSystemTime();
   </script>
 </body>
 </html>
@@ -1772,6 +2871,7 @@ const configPage = `
         <div class="flex items-center">
           <i class="fas fa-calendar-check text-indigo-600 text-2xl mr-2"></i>
           <span class="font-bold text-xl text-gray-800">订阅管理系统</span>
+          <span id="systemTimeDisplay" class="ml-4 text-base text-indigo-600 font-normal"></span>
         </div>
         <div class="flex items-center space-x-4">
           <a href="/admin" class="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium">
@@ -1810,6 +2910,8 @@ const configPage = `
         
         <div class="border-b border-gray-200 pb-6">
           <h3 class="text-lg font-medium text-gray-900 mb-4">显示设置</h3>
+          
+          
           <div class="mb-6">
             <label class="inline-flex items-center">
               <input type="checkbox" id="showLunarGlobal" class="form-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" checked>
@@ -1819,6 +2921,36 @@ const configPage = `
           </div>
         </div>
 
+
+        <div class="border-b border-gray-200 pb-6">
+          <h3 class="text-lg font-medium text-gray-900 mb-4">时区设置</h3>
+          <div class="mb-6">
+          <label for="timezone" class="block text-sm font-medium text-gray-700 mb-1">时区选择</label>
+          <select id="timezone" name="timezone" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+            <option value="UTC">世界标准时间（UTC+0）</option>
+            <option value="Asia/Shanghai">中国标准时间（UTC+8）</option>
+            <option value="Asia/Hong_Kong">香港时间（UTC+8）</option>
+            <option value="Asia/Taipei">台北时间（UTC+8）</option>
+            <option value="Asia/Singapore">新加坡时间（UTC+8）</option>
+            <option value="Asia/Tokyo">日本时间（UTC+9）</option>
+            <option value="Asia/Seoul">韩国时间（UTC+9）</option>
+            <option value="America/New_York">美国东部时间（UTC-5）</option>
+            <option value="America/Chicago">美国中部时间（UTC-6）</option>
+            <option value="America/Denver">美国山地时间（UTC-7）</option>
+            <option value="America/Los_Angeles">美国太平洋时间（UTC-8）</option>
+            <option value="Europe/London">英国时间（UTC+0）</option>
+            <option value="Europe/Paris">巴黎时间（UTC+1）</option>
+            <option value="Europe/Berlin">柏林时间（UTC+1）</option>
+            <option value="Europe/Moscow">莫斯科时间（UTC+3）</option>
+            <option value="Australia/Sydney">悉尼时间（UTC+10）</option>
+            <option value="Australia/Melbourne">墨尔本时间（UTC+10）</option>
+            <option value="Pacific/Auckland">奥克兰时间（UTC+12）</option>
+          </select>
+            <p class="mt-1 text-sm text-gray-500">选择需要使用时区，计算到期日期</p>
+          </div>
+        </div>
+
+        
         <div class="border-b border-gray-200 pb-6">
           <h3 class="text-lg font-medium text-gray-900 mb-4">通知设置</h3>
           <div class="mb-6">
@@ -2050,9 +3182,12 @@ const configPage = `
         document.getElementById('emailFrom').value = config.EMAIL_FROM || '';
         document.getElementById('emailFromName').value = config.EMAIL_FROM_NAME || '订阅提醒系统';
         document.getElementById('emailTo').value = config.EMAIL_TO || '';
-
+        
         // 加载农历显示设置
         document.getElementById('showLunarGlobal').checked = config.SHOW_LUNAR === true;
+
+        // 动态生成时区选项，并设置保存的值
+        generateTimezoneOptions(config.TIMEZONE || 'UTC');
 
         // 处理多选通知渠道
         const enabledNotifiers = config.ENABLED_NOTIFIERS || ['notifyx'];
@@ -2065,6 +3200,46 @@ const configPage = `
         console.error('加载配置失败:', error);
         showToast('加载配置失败，请刷新页面重试', 'error');
       }
+    }
+    
+    // 动态生成时区选项
+    function generateTimezoneOptions(selectedTimezone = 'UTC') {
+      const timezoneSelect = document.getElementById('timezone');
+      
+      const timezones = [
+        { value: 'UTC', name: '世界标准时间', offset: '+0' },
+        { value: 'Asia/Shanghai', name: '中国标准时间', offset: '+8' },
+        { value: 'Asia/Hong_Kong', name: '香港时间', offset: '+8' },
+        { value: 'Asia/Taipei', name: '台北时间', offset: '+8' },
+        { value: 'Asia/Singapore', name: '新加坡时间', offset: '+8' },
+        { value: 'Asia/Tokyo', name: '日本时间', offset: '+9' },
+        { value: 'Asia/Seoul', name: '韩国时间', offset: '+9' },
+        { value: 'America/New_York', name: '美国东部时间', offset: '-5' },
+        { value: 'America/Chicago', name: '美国中部时间', offset: '-6' },
+        { value: 'America/Denver', name: '美国山地时间', offset: '-7' },
+        { value: 'America/Los_Angeles', name: '美国太平洋时间', offset: '-8' },
+        { value: 'Europe/London', name: '英国时间', offset: '+0' },
+        { value: 'Europe/Paris', name: '巴黎时间', offset: '+1' },
+        { value: 'Europe/Berlin', name: '柏林时间', offset: '+1' },
+        { value: 'Europe/Moscow', name: '莫斯科时间', offset: '+3' },
+        { value: 'Australia/Sydney', name: '悉尼时间', offset: '+10' },
+        { value: 'Australia/Melbourne', name: '墨尔本时间', offset: '+10' },
+        { value: 'Pacific/Auckland', name: '奥克兰时间', offset: '+12' }
+      ];
+      
+      // 清空现有选项
+      timezoneSelect.innerHTML = '';
+      
+      // 添加新选项
+      timezones.forEach(tz => {
+        const option = document.createElement('option');
+        option.value = tz.value;
+        option.textContent = tz.name + '（UTC' + tz.offset + '）';
+        timezoneSelect.appendChild(option);
+      });
+      
+      // 设置选中的时区
+      timezoneSelect.value = selectedTimezone;
     }
     
     function toggleNotificationConfigs(enabledNotifiers) {
@@ -2138,7 +3313,8 @@ const configPage = `
         EMAIL_FROM: document.getElementById('emailFrom').value.trim(),
         EMAIL_FROM_NAME: document.getElementById('emailFromName').value.trim(),
         EMAIL_TO: document.getElementById('emailTo').value.trim(),
-        ENABLED_NOTIFIERS: enabledNotifiers
+        ENABLED_NOTIFIERS: enabledNotifiers,
+        TIMEZONE: document.getElementById('timezone').value.trim()
       };
 
       const passwordField = document.getElementById('adminPassword');
@@ -2163,6 +3339,18 @@ const configPage = `
         if (result.success) {
           showToast('配置保存成功', 'success');
           passwordField.value = '';
+          
+          // 更新全局时区并重新显示时间
+          globalTimezone = config.TIMEZONE;
+          showSystemTime();
+          
+          // 标记时区已更新，供其他页面检测
+          localStorage.setItem('timezoneUpdated', Date.now().toString());
+          
+          // 如果当前在订阅列表页面，则自动刷新页面以更新时区显示
+          if (window.location.pathname === '/admin') {
+            window.location.reload();
+          }
         } else {
           showToast('配置保存失败: ' + (result.message || '未知错误'), 'error');
         }
@@ -2292,6 +3480,107 @@ const configPage = `
     });
 
     window.addEventListener('load', loadConfig);
+    
+    // 全局时区配置
+    let globalTimezone = 'UTC';
+    
+    // 实时显示系统时间和时区
+    async function showSystemTime() {
+      try {
+        // 获取后台配置的时区
+        const response = await fetch('/api/config');
+        const config = await response.json();
+        globalTimezone = config.TIMEZONE || 'UTC';
+        
+        // 格式化当前时间
+        function formatTime(dt, tz) {
+          return dt.toLocaleString('zh-CN', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        function formatTimezoneDisplay(tz) {
+          try {
+            // 使用更准确的时区偏移计算方法
+            const now = new Date();
+            const dtf = new Intl.DateTimeFormat('en-US', {
+              timeZone: tz,
+              hour12: false,
+              year: 'numeric', month: '2-digit', day: '2-digit',
+              hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+            const parts = dtf.formatToParts(now);
+            const get = type => Number(parts.find(x => x.type === type).value);
+            const target = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+            const utc = now.getTime();
+            const offset = Math.round((target - utc) / (1000 * 60 * 60));
+            
+            // 时区中文名称映射
+            const timezoneNames = {
+              'UTC': '世界标准时间',
+              'Asia/Shanghai': '中国标准时间',
+              'Asia/Hong_Kong': '香港时间',
+              'Asia/Taipei': '台北时间',
+              'Asia/Singapore': '新加坡时间',
+              'Asia/Tokyo': '日本时间',
+              'Asia/Seoul': '韩国时间',
+              'America/New_York': '美国东部时间',
+              'America/Los_Angeles': '美国太平洋时间',
+              'America/Chicago': '美国中部时间',
+              'America/Denver': '美国山地时间',
+              'Europe/London': '英国时间',
+              'Europe/Paris': '巴黎时间',
+              'Europe/Berlin': '柏林时间',
+              'Europe/Moscow': '莫斯科时间',
+              'Australia/Sydney': '悉尼时间',
+              'Australia/Melbourne': '墨尔本时间',
+              'Pacific/Auckland': '奥克兰时间'
+            };
+            
+            const offsetStr = offset >= 0 ? '+' + offset : offset;
+            const timezoneName = timezoneNames[tz] || tz;
+            return timezoneName + ' (UTC' + offsetStr + ')';
+          } catch (error) {
+            console.error('格式化时区显示失败:', error);
+            return tz;
+          }
+        }
+        function update() {
+          const now = new Date();
+          const timeStr = formatTime(now, globalTimezone);
+          const tzStr = formatTimezoneDisplay(globalTimezone);
+          const el = document.getElementById('systemTimeDisplay');
+          if (el) {
+            el.textContent = timeStr + '  ' + tzStr;
+          }
+        }
+        update();
+        // 每秒刷新
+        setInterval(update, 1000);
+        
+        // 定期检查时区变化并重新加载订阅列表（每30秒检查一次）
+        setInterval(async () => {
+          try {
+            const response = await fetch('/api/config');
+            const config = await response.json();
+            const newTimezone = config.TIMEZONE || 'UTC';
+            
+            if (globalTimezone !== newTimezone) {
+              globalTimezone = newTimezone;
+              console.log('时区已更新为:', globalTimezone);
+              // 重新加载订阅列表以更新天数计算
+              loadSubscriptions();
+            }
+          } catch (error) {
+            console.error('检查时区更新失败:', error);
+          }
+        }, 30000);
+      } catch (e) {
+        // 出错时显示本地时间
+        const el = document.getElementById('systemTimeDisplay');
+        if (el) {
+          el.textContent = new Date().toLocaleString();
+        }
+      }
+    }
+    showSystemTime();
   </script>
 </body>
 </html>
@@ -2425,7 +3714,8 @@ const api = {
             EMAIL_FROM: newConfig.EMAIL_FROM || '',
             EMAIL_FROM_NAME: newConfig.EMAIL_FROM_NAME || '',
             EMAIL_TO: newConfig.EMAIL_TO || '',
-            ENABLED_NOTIFIERS: newConfig.ENABLED_NOTIFIERS || ['notifyx']
+            ENABLED_NOTIFIERS: newConfig.ENABLED_NOTIFIERS || ['notifyx'],
+            TIMEZONE: newConfig.TIMEZONE || config.TIMEZONE || 'UTC' // 新增时区字段
           };
 
           if (newConfig.ADMIN_PASSWORD) {
@@ -2728,7 +4018,8 @@ async function getConfig(env) {
       EMAIL_FROM: config.EMAIL_FROM || '',
       EMAIL_FROM_NAME: config.EMAIL_FROM_NAME || '',
       EMAIL_TO: config.EMAIL_TO || '',
-      ENABLED_NOTIFIERS: config.ENABLED_NOTIFIERS || ['notifyx']
+      ENABLED_NOTIFIERS: config.ENABLED_NOTIFIERS || ['notifyx'],
+      TIMEZONE: config.TIMEZONE || 'UTC' // 新增时区字段
     };
 
     console.log('[配置] 最终配置用户名:', finalConfig.ADMIN_USERNAME);
@@ -2757,7 +4048,8 @@ async function getConfig(env) {
       EMAIL_FROM: '',
       EMAIL_FROM_NAME: '',
       EMAIL_TO: '',
-      ENABLED_NOTIFIERS: ['notifyx']
+      ENABLED_NOTIFIERS: ['notifyx'],
+      TIMEZONE: 'UTC' // 新增时区字段
     };
   }
 }
@@ -2830,7 +4122,9 @@ async function createSubscription(subscription, env) {
     }
 
     let expiryDate = new Date(subscription.expiryDate);
-    const now = new Date();
+    const config = await getConfig(env);
+    const timezone = config?.TIMEZONE || 'UTC';
+    const currentTime = getCurrentTimeInTimezone(timezone);
     
 
     let useLunar = !!subscription.useLunar;
@@ -2843,7 +4137,7 @@ async function createSubscription(subscription, env) {
       
       if (lunar && subscription.periodValue && subscription.periodUnit) {
         // 如果到期日<=今天，自动推算到下一个周期
-        while (expiryDate <= now) {
+        while (expiryDate <= currentTime) {
           lunar = lunarBiz.addLunarPeriod(lunar, subscription.periodValue, subscription.periodUnit);
           const solar = lunarBiz.lunar2solar(lunar);
           expiryDate = new Date(solar.year, solar.month - 1, solar.day);
@@ -2851,8 +4145,8 @@ async function createSubscription(subscription, env) {
         subscription.expiryDate = expiryDate.toISOString();
       }
     } else {
-      if (expiryDate < now && subscription.periodValue && subscription.periodUnit) {
-        while (expiryDate < now) {
+      if (expiryDate < currentTime && subscription.periodValue && subscription.periodUnit) {
+        while (expiryDate < currentTime) {
           if (subscription.periodUnit === 'day') {
             expiryDate.setDate(expiryDate.getDate() + subscription.periodValue);
           } else if (subscription.periodUnit === 'month') {
@@ -2866,7 +4160,7 @@ async function createSubscription(subscription, env) {
     }
 
     const newSubscription = {
-      id: Date.now().toString(),
+      id: Date.now().toString(), // 前端使用本地时间戳
       name: subscription.name,
       customType: subscription.customType || '',
       startDate: subscription.startDate || null,
@@ -2907,7 +4201,9 @@ async function updateSubscription(id, subscription, env) {
     }
 
     let expiryDate = new Date(subscription.expiryDate);
-    const now = new Date();
+    const config = await getConfig(env);
+    const timezone = config?.TIMEZONE || 'UTC';
+    const currentTime = getCurrentTimeInTimezone(timezone);
 
 let useLunar = !!subscription.useLunar;
 if (useLunar) {
@@ -2919,18 +4215,18 @@ if (useLunar) {
   if (!lunar) {
     return { success: false, message: '农历日期超出支持范围（1900-2100年）' };
   }
-  if (lunar && expiryDate < now && subscription.periodValue && subscription.periodUnit) {
-    // 新增：循环加周期，直到 expiryDate > now
+  if (lunar && expiryDate < currentTime && subscription.periodValue && subscription.periodUnit) {
+    // 新增：循环加周期，直到 expiryDate > currentTime
     do {
       lunar = lunarBiz.addLunarPeriod(lunar, subscription.periodValue, subscription.periodUnit);
       const solar = lunarBiz.lunar2solar(lunar);
       expiryDate = new Date(solar.year, solar.month - 1, solar.day);
-    } while (expiryDate < now);
+    } while (expiryDate < currentTime);
     subscription.expiryDate = expiryDate.toISOString();
   }
 } else {
-      if (expiryDate < now && subscription.periodValue && subscription.periodUnit) {
-        while (expiryDate < now) {
+      if (expiryDate < currentTime && subscription.periodValue && subscription.periodUnit) {
+        while (expiryDate < currentTime) {
           if (subscription.periodUnit === 'day') {
             expiryDate.setDate(expiryDate.getDate() + subscription.periodValue);
           } else if (subscription.periodUnit === 'month') {
@@ -3028,7 +4324,23 @@ async function testSingleSubscriptionNotification(id, env) {
       lunarExpiryText = lunarExpiry ? ` (农历: ${lunarExpiry.fullStr})` : '';
     }
 
-    const commonContent = `**订阅详情**:\n- **类型**: ${subscription.customType || '其他'}\n- **到期日**: ${formatBeijingTime(new Date(subscription.expiryDate), 'date')}${lunarExpiryText}\n- **备注**: ${subscription.notes || '无'}`;
+    // 格式化到期日期（使用所选时区）
+    const timezone = config?.TIMEZONE || 'UTC';
+    const formattedExpiryDate = formatTimeInTimezone(new Date(subscription.expiryDate), timezone, 'date');
+    const currentTime = formatTimeInTimezone(new Date(), timezone, 'datetime');
+    
+    // 获取日历类型和自动续期状态
+    const calendarType = subscription.useLunar ? '农历' : '公历';
+    const autoRenewText = subscription.autoRenew ? '是' : '否';
+    
+    const commonContent = `**订阅详情**
+类型: ${subscription.customType || '其他'}
+日历类型: ${calendarType}
+到期日期: ${formattedExpiryDate}${lunarExpiryText}
+自动续期: ${autoRenewText}
+备注: ${subscription.notes || '无'}
+发送时间: ${currentTime}
+当前时区: ${formatTimezoneDisplay(timezone)}`;
 
     // 使用多渠道发送
     await sendNotificationToAllChannels(title, commonContent, config, '[手动测试]');
@@ -3050,7 +4362,6 @@ async function sendWebhookNotification(title, content, config) {
 
     console.log('[企业微信应用通知] 开始发送通知到: ' + config.WEBHOOK_URL);
 
-    const timestamp = formatBeijingTime(new Date(), 'datetime');
     let requestBody;
     let headers = { 'Content-Type': 'application/json' };
 
@@ -3070,15 +4381,14 @@ async function sendWebhookNotification(title, content, config) {
         const template = JSON.parse(config.WEBHOOK_TEMPLATE);
         requestBody = JSON.stringify(template)
           .replace(/\{\{title\}\}/g, title)
-          .replace(/\{\{content\}\}/g, content)
-          .replace(/\{\{timestamp\}\}/g, timestamp);
+          .replace(/\{\{content\}\}/g, content);
         requestBody = JSON.parse(requestBody);
       } catch (error) {
         console.warn('[企业微信应用通知] 消息模板格式错误，使用默认格式');
-        requestBody = { title, content, timestamp };
+        requestBody = { title, content };
       }
     } else {
-      requestBody = { title, content, timestamp };
+      requestBody = { title, content };
     }
 
     const response = await fetch(config.WEBHOOK_URL, {
@@ -3125,7 +4435,7 @@ async function sendWechatBotNotification(title, content, config) {
         }
       };
     } else {
-      // 文本消息格式
+      // 文本消息格式 - 优化显示
       const textContent = `${title}\n\n${content}`;
       messageData = {
         msgtype: 'text',
@@ -3189,6 +4499,68 @@ async function sendWechatBotNotification(title, content, config) {
   }
 }
 
+// 优化通知内容格式
+function formatNotificationContent(subscriptions, config) {
+  const showLunar = config.SHOW_LUNAR === true;
+  const timezone = config?.TIMEZONE || 'UTC';
+  let content = '';
+
+  for (const sub of subscriptions) {
+    const typeText = sub.customType || '其他';
+    const periodText = (sub.periodValue && sub.periodUnit) ? `(周期: ${sub.periodValue} ${ { day: '天', month: '月', year: '年' }[sub.periodUnit] || sub.periodUnit})` : '';
+
+    // 格式化到期日期（使用所选时区）
+    const expiryDateObj = new Date(sub.expiryDate);
+    const formattedExpiryDate = formatTimeInTimezone(expiryDateObj, timezone, 'date');
+    
+    // 农历日期
+    let lunarExpiryText = '';
+    if (showLunar) {
+      const lunarExpiry = lunarCalendar.solar2lunar(expiryDateObj.getFullYear(), expiryDateObj.getMonth() + 1, expiryDateObj.getDate());
+      lunarExpiryText = lunarExpiry ? `\n农历日期: ${lunarExpiry.fullStr}` : '';
+    }
+
+    // 状态和到期时间
+    let statusText = '';
+    let statusEmoji = '';
+    if (sub.daysRemaining === 0) {
+      statusEmoji = '⚠️';
+      statusText = '今天到期！';
+    } else if (sub.daysRemaining < 0) {
+      statusEmoji = '🚨';
+      statusText = `已过期 ${Math.abs(sub.daysRemaining)} 天`;
+    } else {
+      statusEmoji = '📅';
+      statusText = `将在 ${sub.daysRemaining} 天后到期`;
+    }
+
+    // 获取日历类型和自动续期状态
+    const calendarType = sub.useLunar ? '农历' : '公历';
+    const autoRenewText = sub.autoRenew ? '是' : '否';
+    
+    // 构建格式化的通知内容
+    const subscriptionContent = `${statusEmoji} **${sub.name}**
+类型: ${typeText} ${periodText}
+日历类型: ${calendarType}
+到期日期: ${formattedExpiryDate}${lunarExpiryText}
+自动续期: ${autoRenewText}
+到期状态: ${statusText}`;
+
+    // 添加备注
+    let finalContent = sub.notes ? 
+      subscriptionContent + `\n备注: ${sub.notes}` : 
+      subscriptionContent;
+
+    content += finalContent + '\n\n';
+  }
+
+  // 添加发送时间和时区信息
+  const currentTime = formatTimeInTimezone(new Date(), timezone, 'datetime');
+  content += `发送时间: ${currentTime}\n当前时区: ${formatTimezoneDisplay(timezone)}`;
+
+  return content;
+}
+
 async function sendNotificationToAllChannels(title, commonContent, config, logPrefix = '[定时任务]') {
     if (!config.ENABLED_NOTIFIERS || config.ENABLED_NOTIFIERS.length === 0) {
         console.log(`${logPrefix} 未启用任何通知渠道。`);
@@ -3201,7 +4573,7 @@ async function sendNotificationToAllChannels(title, commonContent, config, logPr
         console.log(`${logPrefix} 发送NotifyX通知 ${success ? '成功' : '失败'}`);
     }
     if (config.ENABLED_NOTIFIERS.includes('telegram')) {
-        const telegramContent = `*${title}*\n\n${commonContent.replace(/(\s)/g, ' ')}`;
+        const telegramContent = `*${title}*\n\n${commonContent}`;
         const success = await sendTelegramNotification(telegramContent, config);
         console.log(`${logPrefix} 发送Telegram通知 ${success ? '成功' : '失败'}`);
     }
@@ -3327,7 +4699,7 @@ async function sendEmailNotification(title, content, config) {
             <p>此邮件由订阅管理系统自动发送，请及时处理相关订阅事务。</p>
         </div>
         <div class="footer">
-            <p>订阅管理系统 | 发送时间: ${formatBeijingTime()}</p>
+            <p>订阅管理系统 | 发送时间: ${formatTimeInTimezone(new Date(), config?.TIMEZONE || 'UTC', 'datetime')}</p>
         </div>
     </div>
 </body>
@@ -3379,14 +4751,13 @@ async function sendNotification(title, content, description, config) {
 // 4. 修改定时任务 checkExpiringSubscriptions，支持农历周期自动续订和农历提醒
 async function checkExpiringSubscriptions(env) {
   try {
-    const now = new Date();
-    const beijingTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-    console.log('[定时任务] 开始检查即将到期的订阅 UTC: ' + now.toISOString() + ', 北京时间: ' + beijingTime.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'}));
+    const config = await getConfig(env);
+    const timezone = config?.TIMEZONE || 'UTC';
+    const currentTime = getCurrentTimeInTimezone(timezone);
+    console.log('[定时任务] 开始检查即将到期的订阅 UTC: ' + new Date().toISOString() + ', ' + timezone + ': ' + currentTime.toLocaleString('zh-CN', {timeZone: timezone}));
 
     const subscriptions = await getAllSubscriptions(env);
     console.log('[定时任务] 共找到 ' + subscriptions.length + ' 个订阅');
-
-    const config = await getConfig(env);
     const expiringSubscriptions = [];
     const updatedSubscriptions = [];
     let hasUpdates = false;
@@ -3405,9 +4776,31 @@ for (const subscription of subscriptions) {
       expiryDate.getMonth() + 1,
       expiryDate.getDate()
     );
-    daysDiff = lunarBiz.daysToLunar(lunar);
+    // 使用与前端一致的计算逻辑：基于时区日期的午夜时间
+    const solar = lunarBiz.lunar2solar(lunar);
+    const lunarDate = new Date(solar.year, solar.month - 1, solar.day);
+    
+    const currentDtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+    const currentParts = currentDtf.formatToParts(currentTime);
+    const getCurrent = type => Number(currentParts.find(x => x.type === type).value);
+    const currentDateInTimezone = Date.UTC(getCurrent('year'), getCurrent('month') - 1, getCurrent('day'), 0, 0, 0);
+    
+    const lunarDtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+    const lunarParts = lunarDtf.formatToParts(lunarDate);
+    const getLunar = type => Number(lunarParts.find(x => x.type === type).value);
+    const lunarDateInTimezone = Date.UTC(getLunar('year'), getLunar('month') - 1, getLunar('day'), 0, 0, 0);
+    
+    daysDiff = Math.round((lunarDateInTimezone - currentDateInTimezone) / (1000 * 60 * 60 * 24));
 
-    console.log('[定时任务] 订阅 "' + subscription.name + '" 到期日期: ' + expiryDate.toISOString() + ', 剩余天数: ' + daysDiff);
+    console.log('[定时任务] 订阅 "' + subscription.name + '" 到期日期: ' + expiryDate.toISOString() + ', 农历转换后午夜时间: ' + new Date(lunarDateInTimezone).toISOString() + ', 剩余天数: ' + daysDiff);
 
     if (daysDiff < 0 && subscription.periodValue && subscription.periodUnit && subscription.autoRenew !== false) {
       let nextLunar = lunar;
@@ -3415,8 +4808,17 @@ for (const subscription of subscriptions) {
         nextLunar = lunarBiz.addLunarPeriod(nextLunar, subscription.periodValue, subscription.periodUnit);
         const solar = lunarBiz.lunar2solar(nextLunar);
         var newExpiryDate = new Date(solar.year, solar.month - 1, solar.day);
-        daysDiff = lunarBiz.daysToLunar(nextLunar);
-        console.log('[定时任务] 订阅 "' + subscription.name + '" 更新到期日期: ' + newExpiryDate.toISOString() + ', 剩余天数: ' + daysDiff);
+        // 使用与前端一致的计算逻辑：基于时区日期的午夜时间
+        const newLunarDtf = new Intl.DateTimeFormat('en-US', {
+          timeZone: timezone,
+          hour12: false,
+          year: 'numeric', month: '2-digit', day: '2-digit'
+        });
+        const newLunarParts = newLunarDtf.formatToParts(newExpiryDate);
+        const getNewLunar = type => Number(newLunarParts.find(x => x.type === type).value);
+        const newLunarDateInTimezone = Date.UTC(getNewLunar('year'), getNewLunar('month') - 1, getNewLunar('day'), 0, 0, 0);
+        daysDiff = Math.round((newLunarDateInTimezone - currentDateInTimezone) / (1000 * 60 * 60 * 24));
+        console.log('[定时任务] 订阅 "' + subscription.name + '" 更新到期日期: ' + newExpiryDate.toISOString() + ', 农历转换后: ' + newLunarDateInTimezone.toISOString() + ', 剩余天数: ' + daysDiff);
       } while (daysDiff < 0);
 
       const updatedSubscription = { ...subscription, expiryDate: newExpiryDate.toISOString() };
@@ -3441,9 +4843,28 @@ for (const subscription of subscriptions) {
     }
   } else {
     const expiryDate = new Date(subscription.expiryDate);
-    daysDiff = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+    // 使用与前端一致的计算逻辑：基于时区日期的午夜时间
+    const currentDtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+    const currentParts = currentDtf.formatToParts(currentTime);
+    const getCurrent = type => Number(currentParts.find(x => x.type === type).value);
+    const currentDateInTimezone = Date.UTC(getCurrent('year'), getCurrent('month') - 1, getCurrent('day'), 0, 0, 0);
+    
+    const expiryDtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+    const expiryParts = expiryDtf.formatToParts(expiryDate);
+    const getExpiry = type => Number(expiryParts.find(x => x.type === type).value);
+    const expiryDateInTimezone = Date.UTC(getExpiry('year'), getExpiry('month') - 1, getExpiry('day'), 0, 0, 0);
+    
+    daysDiff = Math.round((expiryDateInTimezone - currentDateInTimezone) / (1000 * 60 * 60 * 24));
 
-    console.log('[定时任务] 订阅 "' + subscription.name + '" 到期日期: ' + expiryDate.toISOString() + ', 剩余天数: ' + daysDiff);
+    console.log('[定时任务] 订阅 "' + subscription.name + '" 到期日期: ' + expiryDate.toISOString() + ', 时区午夜时间: ' + new Date(expiryDateInTimezone).toISOString() + ', 剩余天数: ' + daysDiff);
 
     if (daysDiff < 0 && subscription.periodValue && subscription.periodUnit && subscription.autoRenew !== false) {
       const newExpiryDate = new Date(expiryDate);
@@ -3456,8 +4877,17 @@ for (const subscription of subscriptions) {
         newExpiryDate.setFullYear(expiryDate.getFullYear() + subscription.periodValue);
       }
 
-      while (newExpiryDate < new Date(now.toISOString().split('T')[0])) {
-        console.log('[定时任务] 新计算的到期日期 ' + newExpiryDate.toISOString() + ' 仍然过期，继续计算下一个周期');
+      // 将新计算的到期日期转换为指定时区进行比较（使用午夜时间）
+      const newExpiryDtfForCompare = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      });
+      const newExpiryPartsForCompare = newExpiryDtfForCompare.formatToParts(newExpiryDate);
+      const getNewExpiryForCompare = type => Number(newExpiryPartsForCompare.find(x => x.type === type).value);
+      const newExpiryDateInTimezoneForCompare = Date.UTC(getNewExpiryForCompare('year'), getNewExpiryForCompare('month') - 1, getNewExpiryForCompare('day'), 0, 0, 0);
+      while (newExpiryDateInTimezoneForCompare < currentDateInTimezone) {
+        console.log('[定时任务] 新计算的到期日期 ' + newExpiryDate.toISOString() + ' (时区转换后: ' + newExpiryDateInTimezoneForCompare.toISOString() + ') 仍然过期，继续计算下一个周期');
         if (subscription.periodUnit === 'day') {
           newExpiryDate.setDate(newExpiryDate.getDate() + subscription.periodValue);
         } else if (subscription.periodUnit === 'month') {
@@ -3465,6 +4895,10 @@ for (const subscription of subscriptions) {
         } else if (subscription.periodUnit === 'year') {
           newExpiryDate.setFullYear(newExpiryDate.getFullYear() + subscription.periodValue);
         }
+        // 更新时区转换后的时间用于下次比较（使用午夜时间）
+        const updatedExpiryPartsForCompare = newExpiryDtfForCompare.formatToParts(newExpiryDate);
+        const getUpdatedExpiryForCompare = type => Number(updatedExpiryPartsForCompare.find(x => x.type === type).value);
+        newExpiryDateInTimezoneForCompare = Date.UTC(getUpdatedExpiryForCompare('year'), getUpdatedExpiryForCompare('month') - 1, getUpdatedExpiryForCompare('day'), 0, 0, 0);
       }
 
       console.log('[定时任务] 订阅 "' + subscription.name + '" 更新到期日期: ' + newExpiryDate.toISOString());
@@ -3473,7 +4907,16 @@ for (const subscription of subscriptions) {
       updatedSubscriptions.push(updatedSubscription);
       hasUpdates = true;
 
-      const newDaysDiff = Math.ceil((newExpiryDate - now) / (1000 * 60 * 60 * 24));
+      // 将新的到期日期转换为指定时区的时间，然后计算天数差（使用午夜时间）
+      const newExpiryDtf = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour12: false,
+        year: 'numeric', month: '2-digit', day: '2-digit'
+      });
+      const newExpiryParts = newExpiryDtf.formatToParts(newExpiryDate);
+      const getNewExpiry = type => Number(newExpiryParts.find(x => x.type === type).value);
+      const newExpiryDateInTimezone = Date.UTC(getNewExpiry('year'), getNewExpiry('month') - 1, getNewExpiry('day'), 0, 0, 0);
+      const newDaysDiff = Math.round((newExpiryDateInTimezone - currentDateInTimezone) / (1000 * 60 * 60 * 24));
       let reminderDays = subscription.reminderDays !== undefined ? subscription.reminderDays : 7;
       let shouldRemindAfterRenewal = false;
       if (reminderDays === 0) {
@@ -3524,30 +4967,11 @@ for (const subscription of subscriptions) {
     }
 
     if (expiringSubscriptions.length > 0) {
-      let commonContent = '';
+      // 按到期时间排序
       expiringSubscriptions.sort((a, b) => a.daysRemaining - b.daysRemaining);
 
-      const showLunar = config.SHOW_LUNAR === true;
-
-      for (const sub of expiringSubscriptions) {
-        const typeText = sub.customType || '其他';
-        const periodText = (sub.periodValue && sub.periodUnit) ? `(周期: ${sub.periodValue} ${ { day: '天', month: '月', year: '年' }[sub.periodUnit] || sub.periodUnit})` : '';
-
-        let lunarExpiryText = '';
-        if (showLunar) {
-          const expiryDateObj = new Date(sub.expiryDate);
-          const lunarExpiry = lunarCalendar.solar2lunar(expiryDateObj.getFullYear(), expiryDateObj.getMonth() + 1, expiryDateObj.getDate());
-          lunarExpiryText = lunarExpiry ? ` (农历: ${lunarExpiry.fullStr})` : '';
-        }
-
-        let statusText;
-        if (sub.daysRemaining === 0) statusText = `⚠️ **${sub.name}** (${typeText}) ${periodText} 今天到期！${lunarExpiryText}`;
-        else if (sub.daysRemaining < 0) statusText = `🚨 **${sub.name}** (${typeText}) ${periodText} 已过期 ${Math.abs(sub.daysRemaining)} 天${lunarExpiryText}`;
-        else statusText = `📅 **${sub.name}** (${typeText}) ${periodText} 将在 ${sub.daysRemaining} 天后到期${lunarExpiryText}`;
-
-        if (sub.notes) statusText += `\n   备注: ${sub.notes}`;
-        commonContent += statusText + '\n\n';
-      }
+      // 使用优化的格式化函数
+      const commonContent = formatNotificationContent(expiringSubscriptions, config);
 
       const title = '订阅到期提醒';
       await sendNotificationToAllChannels(title, commonContent, config, '[定时任务]');
@@ -3596,6 +5020,21 @@ const CryptoJS = {
   }
 };
 
+function getCurrentTime(config) {
+  const timezone = config?.TIMEZONE || 'UTC';
+  const currentTime = getCurrentTimeInTimezone(timezone);
+  const formatter = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: timezone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+  return {
+    date: currentTime,
+    localString: formatter.format(currentTime),
+    isoString: currentTime.toISOString()
+  };
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -3605,7 +5044,7 @@ export default {
       try {
         const config = await getConfig(env);
         const debugInfo = {
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toISOString(), // 使用UTC时间戳
           pathname: url.pathname,
           kvBinding: !!env.SUBSCRIPTIONS_KV,
           configExists: !!config,
@@ -3670,9 +5109,10 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    const now = new Date();
-    const beijingTime = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-    console.log('[Workers] 定时任务触发 UTC:', now.toISOString(), '北京时间:', beijingTime.toLocaleString('zh-CN', {timeZone: 'Asia/Shanghai'}));
+    const config = await getConfig(env);
+    const timezone = config?.TIMEZONE || 'UTC';
+    const currentTime = getCurrentTimeInTimezone(timezone);
+    console.log('[Workers] 定时任务触发 UTC:', new Date().toISOString(), timezone + ':', currentTime.toLocaleString('zh-CN', {timeZone: timezone}));
     await checkExpiringSubscriptions(env);
   }
 };
