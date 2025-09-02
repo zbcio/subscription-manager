@@ -2976,6 +2976,10 @@ const configPage = `
                 <input type="checkbox" name="enabledNotifiers" value="email" class="form-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
                 <span class="ml-2 text-sm text-gray-700">邮件通知</span>
               </label>
+              <label class="inline-flex items-center">
+                <input type="checkbox" name="enabledNotifiers" value="bark" class="form-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                <span class="ml-2 text-sm text-gray-700">Bark</span>
+              </label>
             </div>
             <div class="mt-2 flex flex-wrap gap-4">
               <a href="https://www.notifyx.cn/" target="_blank" class="text-indigo-600 hover:text-indigo-800 text-sm">
@@ -2989,6 +2993,9 @@ const configPage = `
               </a>
               <a href="https://developers.cloudflare.com/workers/tutorials/send-emails-with-resend/" target="_blank" class="text-indigo-600 hover:text-indigo-800 text-sm">
                 <i class="fas fa-external-link-alt ml-1"></i> 获取 Resend API Key
+              </a>
+              <a href="https://apps.apple.com/cn/app/bark-customed-notifications/id1403753865" target="_blank" class="text-indigo-600 hover:text-indigo-800 text-sm">
+                <i class="fas fa-external-link-alt ml-1"></i> Bark iOS应用
               </a>
             </div>
           </div>
@@ -3126,6 +3133,35 @@ const configPage = `
               </button>
             </div>
           </div>
+
+          <div id="barkConfig" class="config-section">
+            <h4 class="text-md font-medium text-gray-900 mb-3">Bark 配置</h4>
+            <div class="grid grid-cols-1 gap-4 mb-4">
+              <div>
+                <label for="barkServer" class="block text-sm font-medium text-gray-700">服务器地址</label>
+                <input type="url" id="barkServer" placeholder="https://api.day.app" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <p class="mt-1 text-sm text-gray-500">Bark 服务器地址，默认为官方服务器，也可以使用自建服务器</p>
+              </div>
+              <div>
+                <label for="barkDeviceKey" class="block text-sm font-medium text-gray-700">设备Key</label>
+                <input type="text" id="barkDeviceKey" placeholder="从Bark应用获取的设备Key" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <p class="mt-1 text-sm text-gray-500">从 <a href="https://apps.apple.com/cn/app/bark-customed-notifications/id1403753865" target="_blank" class="text-indigo-600 hover:text-indigo-800">Bark iOS 应用</a> 中获取的设备Key</p>
+              </div>
+              <div>
+                <label for="barkIsArchive" class="block text-sm font-medium text-gray-700 mb-2">保存推送</label>
+                <label class="inline-flex items-center">
+                  <input type="checkbox" id="barkIsArchive" class="form-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                  <span class="ml-2 text-sm text-gray-700">保存推送到历史记录</span>
+                </label>
+                <p class="mt-1 text-sm text-gray-500">勾选后推送消息会保存到 Bark 的历史记录中</p>
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button type="button" id="testBarkBtn" class="btn-secondary text-white px-4 py-2 rounded-md text-sm font-medium">
+                <i class="fas fa-paper-plane mr-2"></i>测试 Bark 通知
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="flex justify-end">
@@ -3182,6 +3218,9 @@ const configPage = `
         document.getElementById('emailFrom').value = config.EMAIL_FROM || '';
         document.getElementById('emailFromName').value = config.EMAIL_FROM_NAME || '订阅提醒系统';
         document.getElementById('emailTo').value = config.EMAIL_TO || '';
+        document.getElementById('barkServer').value = config.BARK_SERVER || 'https://api.day.app';
+        document.getElementById('barkDeviceKey').value = config.BARK_DEVICE_KEY || '';
+        document.getElementById('barkIsArchive').checked = config.BARK_IS_ARCHIVE === 'true';
         
         // 加载农历显示设置
         document.getElementById('showLunarGlobal').checked = config.SHOW_LUNAR === true;
@@ -3248,9 +3287,10 @@ const configPage = `
       const webhookConfig = document.getElementById('webhookConfig');
       const wechatbotConfig = document.getElementById('wechatbotConfig');
       const emailConfig = document.getElementById('emailConfig');
+      const barkConfig = document.getElementById('barkConfig');
 
       // 重置所有配置区域
-      [telegramConfig, notifyxConfig, webhookConfig, wechatbotConfig, emailConfig].forEach(config => {
+      [telegramConfig, notifyxConfig, webhookConfig, wechatbotConfig, emailConfig, barkConfig].forEach(config => {
         config.classList.remove('active', 'inactive');
         config.classList.add('inactive');
       });
@@ -3272,6 +3312,9 @@ const configPage = `
         } else if (type === 'email') {
           emailConfig.classList.remove('inactive');
           emailConfig.classList.add('active');
+        } else if (type === 'bark') {
+          barkConfig.classList.remove('inactive');
+          barkConfig.classList.add('active');
         }
       });
     }
@@ -3313,6 +3356,9 @@ const configPage = `
         EMAIL_FROM: document.getElementById('emailFrom').value.trim(),
         EMAIL_FROM_NAME: document.getElementById('emailFromName').value.trim(),
         EMAIL_TO: document.getElementById('emailTo').value.trim(),
+        BARK_SERVER: document.getElementById('barkServer').value.trim() || 'https://api.day.app',
+        BARK_DEVICE_KEY: document.getElementById('barkDeviceKey').value.trim(),
+        BARK_IS_ARCHIVE: document.getElementById('barkIsArchive').checked.toString(),
         ENABLED_NOTIFIERS: enabledNotifiers,
         TIMEZONE: document.getElementById('timezone').value.trim()
       };
@@ -3367,13 +3413,15 @@ const configPage = `
       const buttonId = type === 'telegram' ? 'testTelegramBtn' :
                       type === 'notifyx' ? 'testNotifyXBtn' :
                       type === 'wechatbot' ? 'testWechatBotBtn' :
-                      type === 'email' ? 'testEmailBtn' : 'testWebhookBtn';
+                      type === 'email' ? 'testEmailBtn' :
+                      type === 'bark' ? 'testBarkBtn' : 'testWebhookBtn';
       const button = document.getElementById(buttonId);
       const originalContent = button.innerHTML;
       const serviceName = type === 'telegram' ? 'Telegram' :
                           type === 'notifyx' ? 'NotifyX' :
                           type === 'wechatbot' ? '企业微信机器人' :
-                          type === 'email' ? '邮件通知' : '企业微信应用通知';
+                          type === 'email' ? '邮件通知' :
+                          type === 'bark' ? 'Bark' : '企业微信应用通知';
 
       button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>测试中...';
       button.disabled = true;
@@ -3434,6 +3482,17 @@ const configPage = `
           button.disabled = false;
           return;
         }
+      } else if (type === 'bark') {
+        config.BARK_SERVER = document.getElementById('barkServer').value.trim() || 'https://api.day.app';
+        config.BARK_DEVICE_KEY = document.getElementById('barkDeviceKey').value.trim();
+        config.BARK_IS_ARCHIVE = document.getElementById('barkIsArchive').checked.toString();
+
+        if (!config.BARK_DEVICE_KEY) {
+          showToast('请先填写 Bark 设备Key', 'warning');
+          button.innerHTML = originalContent;
+          button.disabled = false;
+          return;
+        }
       }
 
       try {
@@ -3477,6 +3536,10 @@ const configPage = `
 
     document.getElementById('testEmailBtn').addEventListener('click', () => {
       testNotification('email');
+    });
+
+    document.getElementById('testBarkBtn').addEventListener('click', () => {
+      testNotification('bark');
     });
 
     window.addEventListener('load', loadConfig);
@@ -3714,6 +3777,9 @@ const api = {
             EMAIL_FROM: newConfig.EMAIL_FROM || '',
             EMAIL_FROM_NAME: newConfig.EMAIL_FROM_NAME || '',
             EMAIL_TO: newConfig.EMAIL_TO || '',
+            BARK_DEVICE_KEY: newConfig.BARK_DEVICE_KEY || '',
+            BARK_SERVER: newConfig.BARK_SERVER || 'https://api.day.app',
+            BARK_IS_ARCHIVE: newConfig.BARK_IS_ARCHIVE || 'false',
             ENABLED_NOTIFIERS: newConfig.ENABLED_NOTIFIERS || ['notifyx'],
             TIMEZONE: newConfig.TIMEZONE || config.TIMEZONE || 'UTC' // 新增时区字段
           };
@@ -3814,6 +3880,19 @@ const api = {
 
           success = await sendEmailNotification(title, content, testConfig);
           message = success ? '邮件通知发送成功' : '邮件通知发送失败，请检查配置';
+        } else if (body.type === 'bark') {
+          const testConfig = {
+            ...config,
+            BARK_SERVER: body.BARK_SERVER,
+            BARK_DEVICE_KEY: body.BARK_DEVICE_KEY,
+            BARK_IS_ARCHIVE: body.BARK_IS_ARCHIVE
+          };
+
+          const title = '测试通知';
+          const content = '这是一条测试通知，用于验证Bark通知功能是否正常工作。\n\n发送时间: ' + formatBeijingTime();
+
+          success = await sendBarkNotification(title, content, testConfig);
+          message = success ? 'Bark通知发送成功' : 'Bark通知发送失败，请检查配置';
         }
 
         return new Response(
@@ -4018,6 +4097,9 @@ async function getConfig(env) {
       EMAIL_FROM: config.EMAIL_FROM || '',
       EMAIL_FROM_NAME: config.EMAIL_FROM_NAME || '',
       EMAIL_TO: config.EMAIL_TO || '',
+      BARK_DEVICE_KEY: config.BARK_DEVICE_KEY || '',
+      BARK_SERVER: config.BARK_SERVER || 'https://api.day.app',
+      BARK_IS_ARCHIVE: config.BARK_IS_ARCHIVE || 'false',
       ENABLED_NOTIFIERS: config.ENABLED_NOTIFIERS || ['notifyx'],
       TIMEZONE: config.TIMEZONE || 'UTC' // 新增时区字段
     };
@@ -4597,6 +4679,11 @@ async function sendNotificationToAllChannels(title, commonContent, config, logPr
         const success = await sendEmailNotification(title, emailContent, config);
         console.log(`${logPrefix} 发送邮件通知 ${success ? '成功' : '失败'}`);
     }
+    if (config.ENABLED_NOTIFIERS.includes('bark')) {
+        const barkContent = commonContent.replace(/(\**|\*|##|#|`)/g, '');
+        const success = await sendBarkNotification(title, barkContent, config);
+        console.log(`${logPrefix} 发送Bark通知 ${success ? '成功' : '失败'}`);
+    }
 }
 
 async function sendTelegramNotification(message, config) {
@@ -4653,6 +4740,47 @@ async function sendNotifyXNotification(title, content, description, config) {
     return result.status === 'queued';
   } catch (error) {
     console.error('[NotifyX] 发送通知失败:', error);
+    return false;
+  }
+}
+
+async function sendBarkNotification(title, content, config) {
+  try {
+    if (!config.BARK_DEVICE_KEY) {
+      console.error('[Bark] 通知未配置，缺少设备Key');
+      return false;
+    }
+
+    console.log('[Bark] 开始发送通知到设备: ' + config.BARK_DEVICE_KEY);
+
+    const serverUrl = config.BARK_SERVER || 'https://api.day.app';
+    const url = serverUrl + '/push';
+    const payload = {
+      title: title,
+      body: content,
+      device_key: config.BARK_DEVICE_KEY
+    };
+
+    // 如果配置了保存推送，则添加isArchive参数
+    if (config.BARK_IS_ARCHIVE === 'true') {
+      payload.isArchive = 1;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await response.json();
+    console.log('[Bark] 发送结果:', result);
+    
+    // Bark API返回code为200表示成功
+    return result.code === 200;
+  } catch (error) {
+    console.error('[Bark] 发送通知失败:', error);
     return false;
   }
 }
