@@ -5013,7 +5013,7 @@ for (const subscription of subscriptions) {
       });
       const newExpiryPartsForCompare = newExpiryDtfForCompare.formatToParts(newExpiryDate);
       const getNewExpiryForCompare = type => Number(newExpiryPartsForCompare.find(x => x.type === type).value);
-      const newExpiryDateInTimezoneForCompare = Date.UTC(getNewExpiryForCompare('year'), getNewExpiryForCompare('month') - 1, getNewExpiryForCompare('day'), 0, 0, 0);
+      let newExpiryDateInTimezoneForCompare = Date.UTC(getNewExpiryForCompare('year'), getNewExpiryForCompare('month') - 1, getNewExpiryForCompare('day'), 0, 0, 0);
       while (newExpiryDateInTimezoneForCompare < currentDateInTimezone) {
         console.log('[定时任务] 新计算的到期日期 ' + newExpiryDate.toISOString() + ' (时区转换后: ' + newExpiryDateInTimezoneForCompare.toISOString() + ') 仍然过期，继续计算下一个周期');
         if (subscription.periodUnit === 'day') {
