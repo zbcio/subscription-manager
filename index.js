@@ -4461,9 +4461,11 @@ async function sendWebhookNotification(title, content, config) {
     if (config.WEBHOOK_TEMPLATE) {
       try {
         const template = JSON.parse(config.WEBHOOK_TEMPLATE);
+        title = JSON.stringify(title);
+        content = JSON.stringify(content);
         requestBody = JSON.stringify(template)
-          .replace(/\{\{title\}\}/g, title)
-          .replace(/\{\{content\}\}/g, content);
+          .replace(/\{\{title\}\}/g, title.slice(1, -1))
+          .replace(/\{\{content\}\}/g, content.slice(1, -1));
         requestBody = JSON.parse(requestBody);
       } catch (error) {
         console.warn('[企业微信应用通知] 消息模板格式错误，使用默认格式');
