@@ -71,7 +71,7 @@ Fork仓库,然后点击自己仓库里的部署按钮，等待部署完成,**注
 - **推送 URL**: 参考[官方文档](https://developer.work.weixin.qq.com/document/path/91770)获取
 
 ### Webhook 通知
-- **推送 URL**: 从自建平台（如 [push.wangwangit.com](https://push.wangwangit.com)）获取
+- **推送 URL**: 根据所使用的 Webhook 服务或自建接口填写，例如 `https://your-service.com/hooks/notify`
 - 支持自定义请求方法、请求头与消息模板
 - **模板占位符**：`{{title}}`、`{{content}}`、`{{tags}}`（多行形式）、`{{tagsLine}}`、`{{timestamp}}`、`{{formattedMessage}}`
 
