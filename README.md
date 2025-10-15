@@ -73,6 +73,7 @@ Fork仓库,然后点击自己仓库里的部署按钮，等待部署完成,**注
 ### Webhook 通知
 - **推送 URL**: 从自建平台（如 [push.wangwangit.com](https://push.wangwangit.com)）获取
 - 支持自定义请求方法、请求头与消息模板
+- **模板占位符**：`{{title}}`、`{{content}}`、`{{tags}}`（多行形式）、`{{tagsLine}}`、`{{timestamp}}`、`{{formattedMessage}}`
 
 ### Bark（iOS 推送）
 - **服务器地址**：默认 `https://api.day.app`，也可使用自建服务器

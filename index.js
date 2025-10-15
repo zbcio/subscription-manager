@@ -4001,6 +4001,35 @@ const configPage = `
 `;
 
 // 管理页面
+// 与前端一致的分类切割正则，用于提取标签信息
+const CATEGORY_SEPARATOR_REGEX = /[\/,，\s]+/;
+
+function extractTagsFromSubscriptions(subscriptions = []) {
+  const tagSet = new Set();
+  (subscriptions || []).forEach(sub => {
+    if (!sub || typeof sub !== 'object') {
+      return;
+    }
+    if (Array.isArray(sub.tags)) {
+      sub.tags.forEach(tag => {
+        if (typeof tag === 'string' && tag.trim().length > 0) {
+          tagSet.add(tag.trim());
+        }
+      });
+    }
+    if (typeof sub.category === 'string') {
+      sub.category.split(CATEGORY_SEPARATOR_REGEX)
+        .map(tag => tag.trim())
+        .filter(tag => tag.length > 0)
+        .forEach(tag => tagSet.add(tag));
+    }
+    if (typeof sub.customType === 'string' && sub.customType.trim().length > 0) {
+      tagSet.add(sub.customType.trim());
+    }
+  });
+  return Array.from(tagSet);
+}
+
 const admin = {
   async handleRequest(request, env, ctx) {
     try {
@@ -4401,9 +4430,17 @@ const api = {
           }
 
           const config = await getConfig(env);
+          const bodyTagsRaw = Array.isArray(body.tags)
+            ? body.tags
+            : (typeof body.tags === 'string' ? body.tags.split(/[,，\s]+/) : []);
+          const bodyTags = Array.isArray(bodyTagsRaw)
+            ? bodyTagsRaw.filter(tag => typeof tag === 'string' && tag.trim().length > 0).map(tag => tag.trim())
+            : [];
 
           // 使用多渠道发送通知
-          await sendNotificationToAllChannels(title, content, config, '[第三方API]');
+          await sendNotificationToAllChannels(title, content, config, '[第三方API]', {
+            metadata: { tags: bodyTags }
+          });
 
           return new Response(
             JSON.stringify({
@@ -4843,7 +4880,10 @@ async function testSingleSubscriptionNotification(id, env) {
 当前时区: ${formatTimezoneDisplay(timezone)}`;
 
     // 使用多渠道发送
-    await sendNotificationToAllChannels(title, commonContent, config, '[手动测试]');
+    const tags = extractTagsFromSubscriptions([subscription]);
+    await sendNotificationToAllChannels(title, commonContent, config, '[手动测试]', {
+      metadata: { tags }
+    });
 
     return { success: true, message: '测试通知已发送到所有启用的渠道' };
 
@@ -4853,7 +4893,7 @@ async function testSingleSubscriptionNotification(id, env) {
   }
 }
 
-async function sendWebhookNotification(title, content, config) {
+async function sendWebhookNotification(title, content, config, metadata = {}) {
   try {
     if (!config.WEBHOOK_URL) {
       console.error('[Webhook通知] 通知未配置，缺少URL');
@@ -4875,22 +4915,70 @@ async function sendWebhookNotification(title, content, config) {
       }
     }
 
+    const tagsArray = Array.isArray(metadata.tags)
+      ? metadata.tags.filter(tag => typeof tag === 'string' && tag.trim().length > 0).map(tag => tag.trim())
+      : [];
+    const tagsBlock = tagsArray.length ? tagsArray.map(tag => `- ${tag}`).join('\n') : '';
+    const tagsLine = tagsArray.length ? '标签：' + tagsArray.join('、') : '';
+    const timestamp = formatTimeInTimezone(new Date(), config?.TIMEZONE || 'UTC', 'datetime');
+    const formattedMessage = [title, content, tagsLine, `发送时间：${timestamp}`]
+      .filter(section => section && section.trim().length > 0)
+      .join('\n\n');
+
+    const templateData = {
+      title,
+      content,
+      tags: tagsBlock,
+      tagsLine,
+      rawTags: tagsArray,
+      timestamp,
+      formattedMessage,
+      message: formattedMessage
+    };
+
+    const escapeForJson = (value) => {
+      if (value === null || value === undefined) {
+        return '';
+      }
+      return JSON.stringify(String(value)).slice(1, -1);
+    };
+
+    const applyTemplate = (template, data) => {
+      const templateString = JSON.stringify(template);
+      const replaced = templateString.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+        if (Object.prototype.hasOwnProperty.call(data, key)) {
+          return escapeForJson(data[key]);
+        }
+        return '';
+      });
+      return JSON.parse(replaced);
+    };
+
     // 处理消息模板
     if (config.WEBHOOK_TEMPLATE) {
       try {
         const template = JSON.parse(config.WEBHOOK_TEMPLATE);
-        title = JSON.stringify(title);
-        content = JSON.stringify(content);
-        requestBody = JSON.stringify(template)
-          .replace(/\{\{title\}\}/g, title.slice(1, -1))
-          .replace(/\{\{content\}\}/g, content.slice(1, -1));
-        requestBody = JSON.parse(requestBody);
+        requestBody = applyTemplate(template, templateData);
       } catch (error) {
         console.warn('[Webhook通知] 消息模板格式错误，使用默认格式');
-        requestBody = { title, content };
+        requestBody = {
+          title,
+          content,
+          tags: tagsArray,
+          tagsLine,
+          timestamp,
+          message: formattedMessage
+        };
       }
     } else {
-      requestBody = { title, content };
+      requestBody = {
+        title,
+        content,
+        tags: tagsArray,
+        tagsLine,
+        timestamp,
+        message: formattedMessage
+      };
     }
 
     const response = await fetch(config.WEBHOOK_URL, {
@@ -5121,7 +5209,8 @@ ${reminderText}
   return content;
 }
 
-async function sendNotificationToAllChannels(title, commonContent, config, logPrefix = '[定时任务]') {
+async function sendNotificationToAllChannels(title, commonContent, config, logPrefix = '[定时任务]', options = {}) {
+  const metadata = options.metadata || {};
     if (!config.ENABLED_NOTIFIERS || config.ENABLED_NOTIFIERS.length === 0) {
         console.log(`${logPrefix} 未启用任何通知渠道。`);
         return;
@@ -5139,7 +5228,7 @@ async function sendNotificationToAllChannels(title, commonContent, config, logPr
     }
     if (config.ENABLED_NOTIFIERS.includes('webhook')) {
         const webhookContent = commonContent.replace(/(\**|\*|##|#|`)/g, '');
-        const success = await sendWebhookNotification(title, webhookContent, config);
+        const success = await sendWebhookNotification(title, webhookContent, config, metadata);
         console.log(`${logPrefix} 发送Webhook通知 ${success ? '成功' : '失败'}`);
     }
     if (config.ENABLED_NOTIFIERS.includes('wechatbot')) {
@@ -5534,9 +5623,12 @@ for (const subscription of subscriptions) {
 
         // 使用优化的格式化函数
         const commonContent = formatNotificationContent(expiringSubscriptions, config);
+        const metadataTags = extractTagsFromSubscriptions(expiringSubscriptions);
 
         const title = '订阅到期提醒';
-        await sendNotificationToAllChannels(title, commonContent, config, '[定时任务]');
+        await sendNotificationToAllChannels(title, commonContent, config, '[定时任务]', {
+          metadata: { tags: metadataTags }
+        });
       }
     }
   } catch (error) {
